@@ -36,3 +36,6 @@ Provide a centralized platform combining AI-driven explanations, resources, and 
 ✅ UI/UX Design Completed in Figma
 
 🔜 Development planned with React + Tailwind + AI integrations
+
+🔗 [View Figma Design](https://www.figma.com/proto/Cs7FA6aYIkKrvkOGFkghyQ/Untitled?node-id=45-4&p=f&t=Ayuoe898gnzwMMtT-1&scaling=min-zoom&content-scaling=fixed&page-id=0%3A1&starting-point-node-id=45%3A4)
+
