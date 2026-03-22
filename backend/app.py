@@ -1,0 +1,277 @@
+import os
+import sqlite3
+import requests
+import json
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+from datetime import datetime, timezone
+import PyPDF2
+
+app = Flask(__name__)
+CORS(app) 
+
+# --- FOLDER SETUP ---
+UPLOAD_FOLDER = 'uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+def get_db_connection():
+    conn = sqlite3.connect('carecompanion.db')
+    conn.row_factory = sqlite3.Row 
+    return conn
+
+# --- 1. SETUP DATABASE ---
+def setup_database():
+    conn = get_db_connection()
+    
+    conn.execute('CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)')
+    conn.execute('CREATE TABLE IF NOT EXISTS appointments (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, time TEXT NOT NULL, doctor TEXT NOT NULL, specialty TEXT NOT NULL, location TEXT, status TEXT NOT NULL)')
+    conn.execute('CREATE TABLE IF NOT EXISTS alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, medicationName TEXT NOT NULL, time TEXT NOT NULL, date TEXT NOT NULL)')
+    conn.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL)')
+    conn.execute('CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY AUTOINCREMENT, fileName TEXT NOT NULL, uploadDate TEXT NOT NULL, fileType TEXT NOT NULL, fileSize TEXT NOT NULL)')
+    
+    # Create test user if none exists
+    cursor = conn.execute('SELECT COUNT(*) FROM users')
+    if cursor.fetchone()[0] == 0:
+        conn.execute('INSERT INTO users (email, password) VALUES (?, ?)', ('manoj@test.com', 'password123'))
+        
+    conn.commit()
+    conn.close()
+
+setup_database()
+
+# --- HELPER FUNCTIONS ---
+def extract_text_from_pdf(file_path):
+    text = ""
+    with open(file_path, 'rb') as f:
+        reader = PyPDF2.PdfReader(f)
+        for page in reader.pages:
+            extracted = page.extract_text()
+            if extracted:
+                text += extracted + "\n"
+    return text
+
+def format_size(size_in_bytes):
+    if size_in_bytes >= 1024 * 1024:
+        return f"{size_in_bytes / (1024 * 1024):.1f} MB"
+    return f"{size_in_bytes / 1024:.1f} KB"
+
+def analyze_with_llama(text):
+    # Safety check: If the PDF had no readable text
+    if not text or not text.strip():
+        return "Error: No Readable Text Found\n- The uploaded document contains no text.\n- It might be a scanned image of a paper.\n- Please upload a digital, text-based PDF."
+        
+    prompt = f"""You are a helpful medical assistant. Summarize the following medical report in plain, simple English. 
+    Format your response exactly like this:
+    Write a short title on the very first line.
+    Write 3 to 5 bullet points on the following lines, starting each with a dash (-).
+    Do NOT say "Here is the summary" or add any extra conversational text. Just output the title and the bullet points.
+    
+    Report:
+    {text}"""
+    
+    url = "http://localhost:11434/api/generate"
+    payload = {
+        "model": "llama3.1",
+        "prompt": prompt,
+        "stream": False
+    }
+    
+    try:
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+        return response.json()['response']
+    except Exception as e:
+        print("Llama Error:", e)
+        return "Error Processing Report\n- Could not reach the local Llama 3.1 model.\n- Make sure Ollama is running in the background."
+
+# --- ROUTE: HOME ---
+@app.route('/', methods=['GET'])
+def home():
+    return "CareCompanion Backend is running perfectly with all routes!"
+
+# --- ROUTE: LOGIN ---
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.json
+    conn = get_db_connection()
+    user = conn.execute('SELECT * FROM users WHERE email = ? AND password = ?', (data.get("email"), data.get("password"))).fetchone()
+    conn.close()
+    if user:
+        return jsonify({"message": "Login successful!"})
+    return jsonify({"error": "Wrong email or password"}), 401
+
+# --- ROUTES: NOTES ---
+@app.route('/api/notes', methods=['GET', 'POST'])
+def manage_notes():
+    conn = get_db_connection()
+    if request.method == 'POST':
+        data = request.json
+        current_time = datetime.now(timezone.utc).isoformat()
+        cursor = conn.execute('INSERT INTO notes (content, created_at, updated_at) VALUES (?, ?, ?)', (data.get("content"), current_time, current_time))
+        conn.commit()
+        new_note = conn.execute('SELECT * FROM notes WHERE id = ?', (cursor.lastrowid,)).fetchone()
+        conn.close()
+        return jsonify(dict(new_note))
+
+    all_notes = conn.execute('SELECT * FROM notes ORDER BY id DESC').fetchall()
+    conn.close()
+    return jsonify([dict(n) for n in all_notes])
+
+# --- ROUTES: APPOINTMENTS ---
+@app.route('/api/appointments', methods=['GET', 'POST'])
+def manage_appointments():
+    conn = get_db_connection()
+    if request.method == 'POST':
+        data = request.json
+        cursor = conn.execute('INSERT INTO appointments (date, time, doctor, specialty, location, status) VALUES (?, ?, ?, ?, ?, ?)', 
+                              (data.get("date"), data.get("time"), data.get("doctor"), data.get("specialty"), data.get("location", "TBD"), data.get("status", "Confirmed")))
+        conn.commit()
+        new_apt = conn.execute('SELECT * FROM appointments WHERE id = ?', (cursor.lastrowid,)).fetchone()
+        conn.close()
+        return jsonify(dict(new_apt))
+
+    all_apts = conn.execute('SELECT * FROM appointments ORDER BY id DESC').fetchall()
+    conn.close()
+    return jsonify([dict(apt) for apt in all_apts])
+
+@app.route('/api/appointments/<int:apt_id>/cancel', methods=['PUT'])
+def cancel_appointment(apt_id):
+    conn = get_db_connection()
+    conn.execute("UPDATE appointments SET status = 'Cancelled' WHERE id = ?", (apt_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Cancelled"})
+
+@app.route('/api/appointments/<int:apt_id>', methods=['PUT'])
+def update_appointment(apt_id):
+    data = request.json
+    conn = get_db_connection()
+    conn.execute('UPDATE appointments SET date = ?, time = ?, doctor = ?, specialty = ?, location = ? WHERE id = ?', 
+                 (data.get("date"), data.get("time"), data.get("doctor"), data.get("specialty"), data.get("location", "TBD"), apt_id))
+    conn.commit()
+    updated_apt = conn.execute('SELECT * FROM appointments WHERE id = ?', (apt_id,)).fetchone()
+    conn.close()
+    return jsonify(dict(updated_apt))
+
+# --- ROUTES: ALERTS ---
+@app.route('/api/alerts', methods=['GET', 'POST'])
+def manage_alerts():
+    conn = get_db_connection()
+    if request.method == 'POST':
+        data = request.json
+        cursor = conn.execute('INSERT INTO alerts (medicationName, time, date) VALUES (?, ?, ?)', (data.get("medicationName"), data.get("time"), data.get("date")))
+        conn.commit()
+        new_alert = conn.execute('SELECT * FROM alerts WHERE id = ?', (cursor.lastrowid,)).fetchone()
+        conn.close()
+        return jsonify(dict(new_alert))
+
+    all_alerts = conn.execute('SELECT * FROM alerts ORDER BY id DESC').fetchall()
+    conn.close()
+    return jsonify([dict(a) for a in all_alerts])
+
+@app.route('/api/alerts/<int:alert_id>', methods=['DELETE'])
+def delete_alert(alert_id):
+    conn = get_db_connection()
+    conn.execute('DELETE FROM alerts WHERE id = ?', (alert_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Deleted successfully"})
+
+# --- ROUTES: DOCUMENTS & AI ANALYSIS ---
+@app.route('/api/analyze', methods=['POST'])
+def analyze_report():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+        
+    try:
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        file.save(file_path)
+        
+        file_size_bytes = os.path.getsize(file_path)
+        formatted_size = format_size(file_size_bytes)
+        file_extension = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else 'document'
+        file_type = 'pdf' if file_extension == 'pdf' else 'image' if file_extension in ['jpg', 'png', 'jpeg'] else 'document'
+        current_date = datetime.now(timezone.utc).isoformat()
+
+        conn = get_db_connection()
+        conn.execute('INSERT INTO documents (fileName, uploadDate, fileType, fileSize) VALUES (?, ?, ?, ?)', (file.filename, current_date, file_type, formatted_size))
+        conn.commit()
+        conn.close()
+
+        if file_type == 'pdf':
+            extracted_text = extract_text_from_pdf(file_path)
+        else:
+            extracted_text = "Image or standard text document uploaded. (OCR required for images)."
+
+        summary_text = analyze_with_llama(extracted_text)
+
+        return jsonify({
+            "status": "success",
+            "analysis": summary_text
+        })
+        
+    except Exception as e:
+        print("Upload Error:", e)
+        return jsonify({"error": "Could not process the file."}), 500
+
+@app.route('/api/documents', methods=['GET'])
+def get_documents():
+    conn = get_db_connection()
+    all_docs = conn.execute('SELECT * FROM documents ORDER BY id DESC').fetchall()
+    conn.close()
+    return jsonify([dict(doc) for doc in all_docs])
+
+@app.route('/api/documents/<int:doc_id>', methods=['DELETE'])
+def delete_document(doc_id):
+    conn = get_db_connection()
+    conn.execute('DELETE FROM documents WHERE id = ?', (doc_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Document deleted"})
+
+
+# --- ROUTE: AI CHAT (Conversations & Video Recommendations) ---
+@app.route('/api/chat', methods=['POST'])
+def chat_with_ai():
+    data = request.json
+    user_message = data.get("message", "")
+    
+    # We give Llama strict rules on how to format video links
+    prompt = f"""You are CareCompanion, a helpful, empathetic medical AI assistant.
+    The user says: "{user_message}"
+    
+    If the user asks for video recommendations about a health condition, suggest 3 highly relevant educational YouTube videos. 
+    Because you cannot browse the internet, create a YouTube search link for each video.
+    
+    You MUST format EACH video recommendation on a new line EXACTLY like this "secret code":
+    VIDEO: Video Title | Channel Name | https://www.youtube.com/results?search_query=your+search+terms+here
+    
+    For example:
+    VIDEO: Managing High Blood Pressure | Mayo Clinic | https://www.youtube.com/results?search_query=Managing+High+Blood+Pressure+Mayo+Clinic
+    
+    Provide a brief, supportive conversational response before listing the videos.
+    """
+    
+    url = "http://localhost:11434/api/generate"
+    payload = {
+        "model": "llama3.1",
+        "prompt": prompt,
+        "stream": False
+    }
+    
+    try:
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+        return jsonify({"reply": response.json()['response']})
+    except Exception as e:
+        print("Chat Error:", e)
+        return jsonify({"reply": "I'm having trouble connecting to Llama 3.1 right now. Please make sure Ollama is running."}), 500
+
+if __name__ == '__main__':
+    # app.run(debug=True, port=5000)
+    app.run()
