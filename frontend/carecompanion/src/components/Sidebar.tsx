@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Home, Bell, FileText, Calendar, Heart,FolderOpen } from 'lucide-react';
 
@@ -7,8 +6,6 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ activePage }: SidebarProps) {
-  const location = useLocation();
-
   const navItems = [
     { id: 'home', label: 'Home', icon: Home, path: '/home' },
     { id: 'alerts', label: 'Alerts', icon: Bell, path: '/alerts' },

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import Sidebar from './Sidebar';
 import { User, Settings, Search, FileText, Download, Trash2, File, Image } from 'lucide-react';
 

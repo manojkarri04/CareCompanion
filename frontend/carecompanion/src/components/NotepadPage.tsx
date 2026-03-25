@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from './Sidebar'; // You might need to adjust this path depending on where Sidebar is
 import { User, Settings, Save, Trash2, Edit2 } from 'lucide-react';
 

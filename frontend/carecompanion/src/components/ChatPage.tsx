@@ -178,78 +178,78 @@ export default function ChatPage() {
     return hospitalDatabase[condition] || hospitalDatabase.general;
   };
 
-  const generateBotResponse = (userMessage: string, context?: any): Message => {
-    const lowerMessage = userMessage.toLowerCase();
+  // const generateBotResponse = (userMessage: string, context?: any): Message => {
+  //   const lowerMessage = userMessage.toLowerCase();
     
-    // Check if this is a file upload context
-    if (context?.isFileUpload && context?.fileName) {
-      const analysis = analyzeMedicalReport(context.fileName);
+  //   // Check if this is a file upload context
+  //   if (context?.isFileUpload && context?.fileName) {
+  //     const analysis = analyzeMedicalReport(context.fileName);
       
-      // First: Summary message
-      const summaryData = {
-        diabetes: {
-          title: 'Diabetes Report Analysis',
-          items: [
-            'HbA1c: 7.2% (Target: <7.0%) - Slightly elevated',
-            'Fasting Blood Glucose: 135 mg/dL (Target: 80-130 mg/dL)',
-            'Average Blood Sugar: 165 mg/dL over last 3 months',
-            'Recommendation: Review diet and medication with endocrinologist',
-            'Consider increasing physical activity to 150 min/week',
-          ],
-        },
-        cardiovascular: {
-          title: 'Cardiovascular Assessment',
-          items: [
-            'Blood Pressure: 138/88 mmHg (Stage 1 Hypertension)',
-            'Total Cholesterol: 215 mg/dL (Borderline high)',
-            'LDL Cholesterol: 145 mg/dL (Above optimal)',
-            'HDL Cholesterol: 48 mg/dL (Low - Target: >60 mg/dL)',
-            'Recommendation: Lifestyle modifications and medication review',
-          ],
-        },
-        thyroid: {
-          title: 'Thyroid Function Test Results',
-          items: [
-            'TSH: 4.8 mIU/L (Borderline high)',
-            'Free T4: 0.9 ng/dL (Low normal)',
-            'Free T3: 2.5 pg/mL (Normal)',
-            'Thyroid antibodies: Negative',
-            'Recommendation: Monitor and discuss medication adjustment',
-          ],
-        },
-        kidney: {
-          title: 'Kidney Function Analysis',
-          items: [
-            'eGFR: 68 mL/min/1.73m² (Mild reduction)',
-            'Creatinine: 1.4 mg/dL (Slightly elevated)',
-            'BUN: 22 mg/dL (Normal)',
-            'Protein in urine: Trace amounts detected',
-            'Recommendation: Nephrology consultation recommended',
-          ],
-        },
-        general: {
-          title: 'Health Report Summary',
-          items: [
-            'Overall health status: Good',
-            'Blood pressure: 120/80 mmHg (Normal)',
-            'Cholesterol: 180 mg/dL (Optimal)',
-            'Blood sugar: 95 mg/dL (Normal)',
-            'Vitamin D: Slightly low - consider supplementation',
-          ],
-        },
-      };
+  //     // First: Summary message
+  //     const summaryData = {
+  //       diabetes: {
+  //         title: 'Diabetes Report Analysis',
+  //         items: [
+  //           'HbA1c: 7.2% (Target: <7.0%) - Slightly elevated',
+  //           'Fasting Blood Glucose: 135 mg/dL (Target: 80-130 mg/dL)',
+  //           'Average Blood Sugar: 165 mg/dL over last 3 months',
+  //           'Recommendation: Review diet and medication with endocrinologist',
+  //           'Consider increasing physical activity to 150 min/week',
+  //         ],
+  //       },
+  //       cardiovascular: {
+  //         title: 'Cardiovascular Assessment',
+  //         items: [
+  //           'Blood Pressure: 138/88 mmHg (Stage 1 Hypertension)',
+  //           'Total Cholesterol: 215 mg/dL (Borderline high)',
+  //           'LDL Cholesterol: 145 mg/dL (Above optimal)',
+  //           'HDL Cholesterol: 48 mg/dL (Low - Target: >60 mg/dL)',
+  //           'Recommendation: Lifestyle modifications and medication review',
+  //         ],
+  //       },
+  //       thyroid: {
+  //         title: 'Thyroid Function Test Results',
+  //         items: [
+  //           'TSH: 4.8 mIU/L (Borderline high)',
+  //           'Free T4: 0.9 ng/dL (Low normal)',
+  //           'Free T3: 2.5 pg/mL (Normal)',
+  //           'Thyroid antibodies: Negative',
+  //           'Recommendation: Monitor and discuss medication adjustment',
+  //         ],
+  //       },
+  //       kidney: {
+  //         title: 'Kidney Function Analysis',
+  //         items: [
+  //           'eGFR: 68 mL/min/1.73m² (Mild reduction)',
+  //           'Creatinine: 1.4 mg/dL (Slightly elevated)',
+  //           'BUN: 22 mg/dL (Normal)',
+  //           'Protein in urine: Trace amounts detected',
+  //           'Recommendation: Nephrology consultation recommended',
+  //         ],
+  //       },
+  //       general: {
+  //         title: 'Health Report Summary',
+  //         items: [
+  //           'Overall health status: Good',
+  //           'Blood pressure: 120/80 mmHg (Normal)',
+  //           'Cholesterol: 180 mg/dL (Optimal)',
+  //           'Blood sugar: 95 mg/dL (Normal)',
+  //           'Vitamin D: Slightly low - consider supplementation',
+  //         ],
+  //       },
+  //     };
 
-      return {
-        id: Date.now().toString(),
-        type: 'bot',
-        content: `I've analyzed your medical report. Here's what I found:`,
-        timestamp: new Date(),
-        specialContent: {
-          type: 'summary',
-          data: summaryData[analysis.condition as keyof typeof summaryData] || summaryData.general,
-        },
-      };
-    }
+    //   return {
+    //     id: Date.now().toString(),
+    //     type: 'bot',
+    //     content: `I've analyzed your medical report. Here's what I found:`,
+    //     timestamp: new Date(),
+    //     specialContent: {
+    //       type: 'summary',
+    //       data: summaryData[analysis.condition as keyof typeof summaryData] || summaryData.general,
+    //     },
+    //   };
+    // }
     
     // Handle requests for videos based on context
     if (lowerMessage.includes('video') || lowerMessage.includes('exercise') || lowerMessage.includes('youtube')) {
@@ -699,6 +699,5 @@ const handleSendMessage = async () => {
           </div>
         </div>
       </main>
-    </div>
+  </div>
   );
-}

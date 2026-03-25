@@ -9,7 +9,7 @@ export default function HomePage() {
   
   // New memory states to show loading and the AI result
   const [isUploading, setIsUploading] = useState(false);
-  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [, setAiSummary] = useState<string | null>(null);
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
