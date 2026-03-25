@@ -1,5 +1,5 @@
 # 1. Start with a clean, empty computer that only has Python installed
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 # 2. Make a working folder inside the box called /app
 WORKDIR /app
