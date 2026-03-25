@@ -24,5 +24,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src", "src/App.tsx", "../../SupportingFiles/ChatPageSupportive.tsx"]
+  "include": ["src", "src/App.tsx", "../../ChatPageSupportive.tsx"]
 }

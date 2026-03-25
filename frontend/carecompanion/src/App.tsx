@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './components/LoginPage';
 import HomePage from './components/HomePage';
-import ChatPage from '../../../SupportingFiles/ChatPageSupportive';
+import ChatPage from './components/ChatPage';
 import AlertsPage from './components/AlertsPage';
 import NotepadPage from './components/NotepadPage';
 import AppointmentSchedulerPage from './components/AppointmentSchedulerPage';
