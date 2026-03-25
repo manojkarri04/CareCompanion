@@ -104,19 +104,43 @@ def login():
 # --- ROUTES: NOTES ---
 @app.route('/api/notes', methods=['GET', 'POST'])
 def manage_notes():
-    conn = get_db_connection()
+    # Step 1: Open the connection to the database
+    db_connection = get_db_connection()
+    # ACTION 1: The user wants to SAVE a new note
     if request.method == 'POST':
-        data = request.json
+        # 1. Open the package React sent us and grab the text
+        incoming_data = request.json
+        note_text = incoming_data.get("content")
+        # 2. Check the clock to see what time it is right now
         current_time = datetime.now(timezone.utc).isoformat()
-        cursor = conn.execute('INSERT INTO notes (content, created_at, updated_at) VALUES (?, ?, ?)', (data.get("content"), current_time, current_time))
-        conn.commit()
-        new_note = conn.execute('SELECT * FROM notes WHERE id = ?', (cursor.lastrowid,)).fetchone()
-        conn.close()
+        # 3. Put the new note into the database table
+        cursor = db_connection.execute(
+            'INSERT INTO notes (content, created_at, updated_at) VALUES (?, ?, ?)', 
+            (note_text, current_time, current_time)
+        )
+        # 4. Save the changes permanently
+        db_connection.commit()
+        # 5. Find the ID number of the note we just created (e.g., Note #5)
+        new_note_id = cursor.lastrowid
+        # 6. Grab that exact note back out of the database
+        new_note = db_connection.execute(
+            'SELECT * FROM notes WHERE id = ?', 
+            (new_note_id,)
+        ).fetchone()
+        # 7. Close the database door
+        db_connection.close()
+        # 8. Send the finished note back to the React screen
         return jsonify(dict(new_note))
 
-    all_notes = conn.execute('SELECT * FROM notes ORDER BY id DESC').fetchall()
-    conn.close()
-    return jsonify([dict(n) for n in all_notes])
+    # ACTION 2: The user wants to READ all notes
+
+    if request.method == 'GET':
+        # 1. Grab all the notes, sorting them so the newest ones are at the top (DESC)
+        all_notes = db_connection.execute('SELECT * FROM notes ORDER BY id DESC').fetchall()
+        # 2. Close the database door
+        db_connection.close()
+        # 3. Turn the database list into a normal list and send it to React
+        return jsonify([dict(note) for note in all_notes])
 
 # --- ROUTES: APPOINTMENTS ---
 @app.route('/api/appointments', methods=['GET', 'POST'])
@@ -191,7 +215,6 @@ def analyze_report():
     try:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(file_path)
-        
         file_size_bytes = os.path.getsize(file_path)
         formatted_size = format_size(file_size_bytes)
         file_extension = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else 'document'
@@ -240,23 +263,27 @@ def delete_document(doc_id):
 def chat_with_ai():
     data = request.json
     user_message = data.get("message", "")
+ 
+    # We give Llama strict new rules to act as a medical keyword extractor!
+    prompt = f"""You are CareCompanion, a helpful medical AI assistant.
     
-    # We give Llama strict rules on how to format video links
-    prompt = f"""You are CareCompanion, a helpful, empathetic medical AI assistant.
+    Context from Patient's Medical Report: "{medical_context}"
     The user says: "{user_message}"
     
-    If the user asks for video recommendations about a health condition, suggest 3 highly relevant educational YouTube videos. 
-    Because you cannot browse the internet, create a YouTube search link for each video.
+    Follow these STRICT rules based on what the user said:
+    1. IF the user says "hi", "hello", or greets you: Simply reply, "Hello! I am CareCompanion, your personal health assistant. Please upload a medical report, or ask me a health question!" Do NOT suggest videos.
     
-    You MUST format EACH video recommendation on a new line EXACTLY like this "secret code":
-    VIDEO: Video Title | Channel Name | https://www.youtube.com/results?search_query=your+search+terms+here
+    2. IF the user says "yes" (or "YES", "yeah", "sure") AND there is context from a medical report: 
+       - STEP A: Use your medical knowledge to identify the 1 or 2 most important clinical conditions in the report (e.g., "Type 2 Diabetes", "Hypertension", "Glaucoma").
+       - STEP B: Generate 3 highly relevant educational YouTube videos from reputable sources (like Mayo Clinic or Cleveland Clinic).
+       - STEP C: You MUST build the YouTube search link using the exact clinical conditions you identified in Step A.
+       
+    3. Format EACH video exactly like this on a new line:
+    VIDEO: [Clear Title] | [Channel Name] | https://www.youtube.com/results?search_query=[insert+your+clinical+terms+here]
     
-    For example:
-    VIDEO: Managing High Blood Pressure | Mayo Clinic | https://www.youtube.com/results?search_query=Managing+High+Blood+Pressure+Mayo+Clinic
-    
-    Provide a brief, supportive conversational response before listing the videos.
+    4. NEVER suggest videos unless the user specifically says "yes" or explicitly asks to watch a video.
     """
-    
+
     url = "http://localhost:11434/api/generate"
     payload = {
         "model": "llama3.1",
