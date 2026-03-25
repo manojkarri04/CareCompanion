@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import { Send, Paperclip, Plus, User, Settings } from 'lucide-react';
 
@@ -74,10 +74,8 @@ export default function ChatPage() {
 
   // Analyze medical report context
   const analyzeMedicalReport = (fileName: string) => {
-    // Mock analysis based on common file naming patterns
     const lowerFileName = fileName.toLowerCase();
     
-    // Detect condition type from filename or simulate OCR analysis
     if (lowerFileName.includes('diabetes') || lowerFileName.includes('blood sugar') || lowerFileName.includes('hba1c')) {
       return {
         condition: 'diabetes',
@@ -103,7 +101,6 @@ export default function ChatPage() {
         concerns: ['Kidney function', 'Fluid retention'],
       };
     } else {
-      // Default general health report
       return {
         condition: 'general',
         medications: [],
@@ -112,229 +109,9 @@ export default function ChatPage() {
     }
   };
 
-  const getContextualVideos = (condition: string) => {
-    const videoDatabase: Record<string, any[]> = {
-      diabetes: [
-        { title: 'Understanding Diabetes: Complete Guide', channel: 'Mayo Clinic', url: 'https://www.youtube.com/watch?v=wZAjVQWbMlE' },
-        { title: 'Best Foods for Diabetes Management', channel: 'Diabetes Strong', url: 'https://www.youtube.com/watch?v=c7xW3jB_4Qs' },
-        { title: 'Exercise for Type 2 Diabetes', channel: 'Dr. Berg', url: 'https://www.youtube.com/watch?v=FMSXtTZPHtE' },
-        { title: 'How to Monitor Blood Sugar Correctly', channel: 'Cleveland Clinic', url: 'https://www.youtube.com/watch?v=mMyPFZ14OhE' },
-      ],
-      cardiovascular: [
-        { title: 'Heart Disease Prevention Tips', channel: 'American Heart Association', url: 'https://www.youtube.com/watch?v=RyY4Ai7R8xQ' },
-        { title: 'Cardio Exercises for Heart Health', channel: 'Heart Foundation', url: 'https://www.youtube.com/watch?v=ml6cT4AZdqI' },
-        { title: 'Understanding Your Blood Pressure', channel: 'Mayo Clinic', url: 'https://www.youtube.com/watch?v=EWjRDvYpJmE' },
-        { title: 'Heart-Healthy Mediterranean Diet', channel: 'Nutrition Facts', url: 'https://www.youtube.com/watch?v=30gEiweaAVQ' },
-      ],
-      thyroid: [
-        { title: 'Thyroid Problems Explained', channel: 'Dr. Eric Berg', url: 'https://www.youtube.com/watch?v=4VxP_JJTgNw' },
-        { title: 'Foods to Support Thyroid Health', channel: 'Thomas DeLauer', url: 'https://www.youtube.com/watch?v=okNq1fmFVH8' },
-        { title: 'Managing Hypothyroidism Naturally', channel: 'Dr. Josh Axe', url: 'https://www.youtube.com/watch?v=4VxP_JJTgNw' },
-      ],
-      kidney: [
-        { title: 'Kidney Disease: What You Need to Know', channel: 'National Kidney Foundation', url: 'https://www.youtube.com/watch?v=FhkxzRxHsJk' },
-        { title: 'Best Diet for Kidney Health', channel: 'Kidney Dietitian', url: 'https://www.youtube.com/watch?v=eRMOBSO3_5E' },
-        { title: 'Exercises Safe for Kidney Patients', channel: 'DaVita Kidney Care', url: 'https://www.youtube.com/watch?v=yNLdcfbAFXM' },
-      ],
-      general: [
-        { title: '10-Minute Morning Yoga Routine', channel: 'Yoga with Adriene', url: 'https://www.youtube.com/watch?v=VaoV1PrYft4' },
-        { title: 'Full Body Workout at Home', channel: 'FitnessBlender', url: 'https://www.youtube.com/watch?v=ml6cT4AZdqI' },
-        { title: 'Healthy Eating for Beginners', channel: 'Pick Up Limes', url: 'https://www.youtube.com/watch?v=hJNF2_dCWkg' },
-      ],
-    };
-
-    return videoDatabase[condition] || videoDatabase.general;
-  };
-
-  const getSpecializedHospitals = (condition: string) => {
-    const hospitalDatabase: Record<string, any[]> = {
-      diabetes: [
-        { name: 'Diabetes Care Center', distance: '0.9 miles', specialty: 'Endocrinology & Diabetes', phone: '(555) 123-4567' },
-        { name: 'City General Hospital - Diabetes Unit', distance: '1.2 miles', specialty: 'Comprehensive Diabetes Care', phone: '(555) 234-5678' },
-        { name: 'Wellness Endocrine Clinic', distance: '2.1 miles', specialty: 'Hormone & Metabolic Disorders', phone: '(555) 345-6789' },
-      ],
-      cardiovascular: [
-        { name: 'Heart & Vascular Institute', distance: '1.4 miles', specialty: 'Cardiology & Cardiac Surgery', phone: '(555) 111-2222' },
-        { name: 'St. Mary\'s Cardiac Center', distance: '2.5 miles', specialty: 'Advanced Cardiac Care', phone: '(555) 222-3333' },
-        { name: 'Regional Heart Hospital', distance: '3.2 miles', specialty: 'Interventional Cardiology', phone: '(555) 333-4444' },
-      ],
-      thyroid: [
-        { name: 'Thyroid & Endocrine Specialists', distance: '1.1 miles', specialty: 'Thyroid Disorders', phone: '(555) 444-5555' },
-        { name: 'Metro Endocrinology Center', distance: '1.8 miles', specialty: 'Hormone Therapy', phone: '(555) 555-6666' },
-        { name: 'City General Hospital - Endocrine Dept', distance: '2.3 miles', specialty: 'General Endocrinology', phone: '(555) 666-7777' },
-      ],
-      kidney: [
-        { name: 'Renal Care Specialists', distance: '1.0 miles', specialty: 'Nephrology & Dialysis', phone: '(555) 777-8888' },
-        { name: 'Kidney Disease Treatment Center', distance: '1.7 miles', specialty: 'Chronic Kidney Disease', phone: '(555) 888-9999' },
-        { name: 'University Medical Center - Nephrology', distance: '2.9 miles', specialty: 'Advanced Kidney Care', phone: '(555) 999-0000' },
-      ],
-      general: [
-        { name: 'City General Hospital', distance: '1.2 miles', specialty: 'General & Emergency Care', phone: '(555) 100-2000' },
-        { name: 'Community Health Clinic', distance: '0.8 miles', specialty: 'Primary Care', phone: '(555) 200-3000' },
-        { name: 'St. Mary\'s Medical Center', distance: '2.5 miles', specialty: 'Multi-Specialty Hospital', phone: '(555) 300-4000' },
-      ],
-    };
-
-    return hospitalDatabase[condition] || hospitalDatabase.general;
-  };
-
-  // const generateBotResponse = (userMessage: string, context?: any): Message => {
-  //   const lowerMessage = userMessage.toLowerCase();
-    
-  //   // Check if this is a file upload context
-  //   if (context?.isFileUpload && context?.fileName) {
-  //     const analysis = analyzeMedicalReport(context.fileName);
-      
-  //     // First: Summary message
-  //     const summaryData = {
-  //       diabetes: {
-  //         title: 'Diabetes Report Analysis',
-  //         items: [
-  //           'HbA1c: 7.2% (Target: <7.0%) - Slightly elevated',
-  //           'Fasting Blood Glucose: 135 mg/dL (Target: 80-130 mg/dL)',
-  //           'Average Blood Sugar: 165 mg/dL over last 3 months',
-  //           'Recommendation: Review diet and medication with endocrinologist',
-  //           'Consider increasing physical activity to 150 min/week',
-  //         ],
-  //       },
-  //       cardiovascular: {
-  //         title: 'Cardiovascular Assessment',
-  //         items: [
-  //           'Blood Pressure: 138/88 mmHg (Stage 1 Hypertension)',
-  //           'Total Cholesterol: 215 mg/dL (Borderline high)',
-  //           'LDL Cholesterol: 145 mg/dL (Above optimal)',
-  //           'HDL Cholesterol: 48 mg/dL (Low - Target: >60 mg/dL)',
-  //           'Recommendation: Lifestyle modifications and medication review',
-  //         ],
-  //       },
-  //       thyroid: {
-  //         title: 'Thyroid Function Test Results',
-  //         items: [
-  //           'TSH: 4.8 mIU/L (Borderline high)',
-  //           'Free T4: 0.9 ng/dL (Low normal)',
-  //           'Free T3: 2.5 pg/mL (Normal)',
-  //           'Thyroid antibodies: Negative',
-  //           'Recommendation: Monitor and discuss medication adjustment',
-  //         ],
-  //       },
-  //       kidney: {
-  //         title: 'Kidney Function Analysis',
-  //         items: [
-  //           'eGFR: 68 mL/min/1.73m² (Mild reduction)',
-  //           'Creatinine: 1.4 mg/dL (Slightly elevated)',
-  //           'BUN: 22 mg/dL (Normal)',
-  //           'Protein in urine: Trace amounts detected',
-  //           'Recommendation: Nephrology consultation recommended',
-  //         ],
-  //       },
-  //       general: {
-  //         title: 'Health Report Summary',
-  //         items: [
-  //           'Overall health status: Good',
-  //           'Blood pressure: 120/80 mmHg (Normal)',
-  //           'Cholesterol: 180 mg/dL (Optimal)',
-  //           'Blood sugar: 95 mg/dL (Normal)',
-  //           'Vitamin D: Slightly low - consider supplementation',
-  //         ],
-  //       },
-  //     };
-
-    //   return {
-    //     id: Date.now().toString(),
-    //     type: 'bot',
-    //     content: `I've analyzed your medical report. Here's what I found:`,
-    //     timestamp: new Date(),
-    //     specialContent: {
-    //       type: 'summary',
-    //       data: summaryData[analysis.condition as keyof typeof summaryData] || summaryData.general,
-    //     },
-    //   };
-    // }
-    
-    // Handle requests for videos based on context
-    if (lowerMessage.includes('video') || lowerMessage.includes('exercise') || lowerMessage.includes('youtube')) {
-      // Try to get condition from chat context
-      const condition = currentChat?.medicalContext?.conditions[0] || 'general';
-      return {
-        id: Date.now().toString(),
-        type: 'bot',
-        content: `Based on your health profile, here are relevant educational videos:`,
-        timestamp: new Date(),
-        specialContent: {
-          type: 'videos',
-          data: getContextualVideos(condition),
-        },
-      };
-    }
-    
-    // Handle requests for hospitals
-    if (lowerMessage.includes('hospital') || lowerMessage.includes('doctor') || lowerMessage.includes('specialist') || lowerMessage.includes('clinic')) {
-      const condition = currentChat?.medicalContext?.conditions[0] || 'general';
-      return {
-        id: Date.now().toString(),
-        type: 'bot',
-        content: `Here are specialized medical facilities near you:`,
-        timestamp: new Date(),
-        specialContent: {
-          type: 'hospitals',
-          data: getSpecializedHospitals(condition),
-        },
-      };
-    }
-    
-    // Handle food/diet requests
-    if (lowerMessage.includes('food') || lowerMessage.includes('diet') || lowerMessage.includes('eat') || lowerMessage.includes('meal')) {
-      const condition = currentChat?.medicalContext?.conditions[0] || 'general';
-      const dietData: Record<string, any[]> = {
-        diabetes: [
-          { name: 'Non-starchy vegetables (Broccoli, Spinach, Cauliflower)', benefit: 'Low in carbs, high in fiber and nutrients' },
-          { name: 'Lean proteins (Chicken, Fish, Tofu)', benefit: 'Helps stabilize blood sugar levels' },
-          { name: 'Whole grains (Quinoa, Brown rice, Oats)', benefit: 'Complex carbs with lower glycemic index' },
-          { name: 'Healthy fats (Avocado, Nuts, Olive oil)', benefit: 'Improves insulin sensitivity' },
-          { name: 'Berries (Blueberries, Strawberries)', benefit: 'High in antioxidants, lower sugar content' },
-        ],
-        cardiovascular: [
-          { name: 'Fatty fish (Salmon, Mackerel, Sardines)', benefit: 'Omega-3 fatty acids reduce inflammation' },
-          { name: 'Leafy greens (Kale, Spinach, Collards)', benefit: 'Rich in nitrates, lower blood pressure' },
-          { name: 'Berries (Blueberries, Strawberries)', benefit: 'Antioxidants improve vascular function' },
-          { name: 'Nuts (Almonds, Walnuts)', benefit: 'Lower LDL cholesterol naturally' },
-          { name: 'Olive oil', benefit: 'Monounsaturated fats protect heart health' },
-        ],
-        general: [
-          { name: 'Leafy greens (Spinach, Kale)', benefit: 'Rich in vitamins and minerals' },
-          { name: 'Fatty fish (Salmon, Sardines)', benefit: 'High in Omega-3 fatty acids' },
-          { name: 'Nuts and seeds', benefit: 'Good source of healthy fats' },
-          { name: 'Berries', benefit: 'High in antioxidants' },
-          { name: 'Whole grains', benefit: 'Provides sustained energy' },
-        ],
-      };
-      
-      return {
-        id: Date.now().toString(),
-        type: 'bot',
-        content: `Based on your health condition, here are recommended foods:`,
-        timestamp: new Date(),
-        specialContent: {
-          type: 'food',
-          data: dietData[condition] || dietData.general,
-        },
-      };
-    }
-    
-    // Default response
-    return {
-      id: Date.now().toString(),
-      type: 'bot',
-      content: 'I can help you with:\n• Analyzing your medical reports (upload a file)\n• Providing personalized dietary suggestions\n• Finding relevant health education videos\n• Locating specialized medical facilities\n• Answering health-related questions\n\nWhat would you like to know more about?',
-      timestamp: new Date(),
-    };
-  };
-
-   
-const handleSendMessage = async () => {
+  const handleSendMessage = async () => {
     if (!inputMessage.trim() || !currentChat) return;
 
-    // 1. Show the user's message immediately on the screen
     const userMessage: Message = {
       id: Date.now().toString(),
       type: 'user',
@@ -350,10 +127,9 @@ const handleSendMessage = async () => {
 
     setChats(chats.map((chat) => (chat.id === activeChat ? updatedChat : chat)));
     setInputMessage('');
-    setIsTyping(true); // Turn on the bouncing dots!
+    setIsTyping(true);
 
     try {
-      // 2. Send the message to your new Flask AI route
       const response = await fetch(`${import.meta.env.VITE_API_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -362,15 +138,13 @@ const handleSendMessage = async () => {
 
       const data = await response.json();
       let replyText = data.reply;
-      let videoData: any[] = [];
+      const videoData: any[] = [];
 
-      // 3. The Translator: Look for our "VIDEO:" tags to extract the AI's recommendations
       if (replyText.includes('VIDEO:')) {
         const lines = replyText.split('\n');
         const newLines = [];
 
         for (const line of lines) {
-          // If the line is a video, chop it up into Title, Channel, and URL
           if (line.trim().startsWith('VIDEO:')) {
             const parts = line.replace('VIDEO:', '').split('|');
             if (parts.length >= 3) {
@@ -381,14 +155,12 @@ const handleSendMessage = async () => {
               });
             }
           } else {
-            // If it's normal conversational text, keep it!
             newLines.push(line);
           }
         }
         replyText = newLines.join('\n').trim(); 
       }
 
-      // 4. Build the final bot message with the UI cards
       const botResponse: Message = {
         id: (Date.now() + 1).toString(),
         type: 'bot',
@@ -400,7 +172,6 @@ const handleSendMessage = async () => {
         } : undefined
       };
 
-      // 5. Update the chat window
       setChats((prevChats) => prevChats.map((chat) => 
         chat.id === activeChat 
           ? { ...updatedChat, messages: [...updatedChat.messages, botResponse] } 
@@ -410,7 +181,7 @@ const handleSendMessage = async () => {
     } catch (error) {
       alert("Could not connect to the chat server. Is Flask running?");
     } finally {
-      setIsTyping(false); // Turn off the bouncing dots
+      setIsTyping(false);
     }
   };
 
@@ -424,7 +195,6 @@ const handleSendMessage = async () => {
       const file = files[0];
       const fileName = file.name;
 
-      // 1. Show the user's uploaded file message in the chat right away
       const userMessage: Message = {
         id: Date.now().toString(),
         type: 'user',
@@ -433,7 +203,6 @@ const handleSendMessage = async () => {
         fileAttached: fileName,
       };
 
-      // We still use this to guess the topic so your helpful videos stay relevant!
       const mockAnalysisContext = analyzeMedicalReport(fileName);
 
       const updatedChat = {
@@ -448,9 +217,8 @@ const handleSendMessage = async () => {
       };
 
       setChats(chats.map((chat) => (chat.id === activeChat ? updatedChat : chat)));
-      setIsTyping(true); // Turn on the typing animation while Llama thinks
+      setIsTyping(true);
 
-      // 2. Package the file and send it to your real Flask backend
       const formData = new FormData();
       formData.append('file', file);
 
@@ -463,17 +231,15 @@ const handleSendMessage = async () => {
         const data = await response.json();
 
         if (response.ok) {
-          // 3. Take Llama's raw text and split it into a clean Title and Bullet Points
           const lines = data.analysis.split('\n').filter((line: string) => line.trim() !== '');
-          const title = lines[0].replace(/[*#]/g, ''); // Grab the first line and remove bold marks
-          const items = lines.slice(1).map((line: string) => line.replace(/^[-*•]\s*/, '')); // Grab the rest
+          const title = lines[0].replace(/[*#]/g, '');
+          const items = lines.slice(1).map((line: string) => line.replace(/^[-*•]\s*/, ''));
 
           const summaryData = {
             title: title || "Health Report Summary",
             items: items.length > 0 ? items : [data.analysis]
           };
 
-          // 4. Create the final Bot message with the beautiful blue box
           const botResponse: Message = {
             id: (Date.now() + 1).toString(),
             type: 'bot',
@@ -491,7 +257,6 @@ const handleSendMessage = async () => {
           };
           setChats(chats.map((chat) => (chat.id === activeChat ? chatWithBotResponse : chat)));
 
-          // 5. Send the helpful follow-up options a second later
           setTimeout(() => {
             const followUpMessage: Message = {
               id: (Date.now() + 2).toString(),
@@ -512,7 +277,7 @@ const handleSendMessage = async () => {
       } catch (error) {
         alert("Could not connect to the server.");
       } finally {
-        setIsTyping(false); // Turn off the typing animation
+        setIsTyping(false);
       }
     }
   };
@@ -685,7 +450,7 @@ const handleSendMessage = async () => {
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
               placeholder="Type your message..."
               className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
@@ -699,5 +464,6 @@ const handleSendMessage = async () => {
           </div>
         </div>
       </main>
-  </div>
+    </div>
   );
+}
