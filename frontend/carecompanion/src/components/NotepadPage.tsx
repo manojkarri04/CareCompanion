@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import Sidebar from '../Sidebar'; // You might need to adjust this path depending on where Sidebar is
+import Sidebar from './Sidebar'; // You might need to adjust this path depending on where Sidebar is
 import { User, Settings, Save, Trash2, Edit2 } from 'lucide-react';
 
 interface Note {
@@ -18,7 +18,7 @@ export default function NotepadPage() {
 
   // 2. Fetch the real notes from Flask when the page loads!
   useEffect(() => {
-    fetch('http://localhost:5000/api/notes')
+    fetch(`${import.meta.env.VITE_API_URL}/api/notes`)
       .then((response) => response.json())
       .then((data) => {
         // We have to turn the date text back into real Date objects for React
@@ -41,7 +41,7 @@ export default function NotepadPage() {
     } else {
       // Send the new note to Flask!
       try {
-        const response = await fetch('http://localhost:5000/api/notes', {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/notes`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json', // Telling Flask we are sending text data

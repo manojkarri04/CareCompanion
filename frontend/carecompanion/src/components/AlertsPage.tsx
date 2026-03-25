@@ -19,8 +19,9 @@ export default function AlertsPage() {
   });
 
   // 1. Fetch alerts when the page opens
-  useEffect(() => {
-    fetch('http://localhost:5000/api/alerts')
+
+useEffect(() => {
+    fetch(`${import.meta.env.VITE_API_URL}/api/alerts`)
       .then((response) => response.json())
       .then((data) => {
         const realAlerts = data.map((alert: any) => ({
@@ -36,7 +37,7 @@ export default function AlertsPage() {
   const handleAddAlert = async () => {
     if (newAlert.medicationName && newAlert.time && newAlert.date) {
       try {
-        const response = await fetch('http://localhost:5000/api/alerts', {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/alerts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newAlert),
@@ -59,7 +60,7 @@ export default function AlertsPage() {
   // 3. Delete an alert from the database
   const handleDeleteAlert = async (id: string) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/alerts/${id}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/alerts/${id}`, {
         method: 'DELETE',
       });
 

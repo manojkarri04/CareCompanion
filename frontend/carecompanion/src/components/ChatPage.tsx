@@ -354,7 +354,7 @@ const handleSendMessage = async () => {
 
     try {
       // 2. Send the message to your new Flask AI route
-      const response = await fetch('http://localhost:5000/api/chat', {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: userMessage.content }),
@@ -455,7 +455,7 @@ const handleSendMessage = async () => {
       formData.append('file', file);
 
       try {
-        const response = await fetch('http://localhost:5000/api/analyze', {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/analyze`, {
           method: 'POST',
           body: formData,
         });

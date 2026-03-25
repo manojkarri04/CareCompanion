@@ -31,8 +31,9 @@ export default function AppointmentSchedulerPage() {
 
   // 3. LOAD DATA FROM BACKEND
   // This runs once when you open the page
+
   useEffect(() => {
-    fetch('http://localhost:5000/api/appointments')
+    fetch(`${import.meta.env.VITE_API_URL}/api/appointments`)
       .then((response) => response.json())
       .then((data) => {
         // Fix the IDs to be text instead of numbers
@@ -75,7 +76,7 @@ export default function AppointmentSchedulerPage() {
 
     if (editingId) {
       try {
-        const response = await fetch(`http://localhost:5000/api/appointments/${editingId}`, {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/appointments/${editingId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(appointmentData),
@@ -97,7 +98,7 @@ export default function AppointmentSchedulerPage() {
 
     } else {
       try {
-        const response = await fetch('http://localhost:5000/api/appointments', {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/appointments`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(appointmentData),
@@ -142,7 +143,7 @@ export default function AppointmentSchedulerPage() {
   // 7. CANCEL APPOINTMENT
   const handleCancelAppointment = async (id: string) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/appointments/${id}/cancel`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/appointments/${id}/cancel`, {
         method: 'PUT',
       });
 
