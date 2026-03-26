@@ -10,6 +10,12 @@ import SavedDocumentsPage from './components/SavedDocumentsPage';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isGuestMode, setIsGuestMode] = useState(false);
+
+ const handleGuestLogin = () => {
+    setIsAuthenticated(true);
+    setIsGuestMode(true);
+  };
 
   return (
     <Router>
@@ -20,7 +26,7 @@ export default function App() {
             isAuthenticated ? (
               <Navigate to="/home" replace />
             ) : (
-              <LoginPage onLogin={() => setIsAuthenticated(true)} />
+              <LoginPage onLogin={handleLogin} onGuestLogin={handleGuestLogin} />
             )
           } 
         />
@@ -28,7 +34,7 @@ export default function App() {
           path="/home"
           element={
             isAuthenticated ? (
-              <HomePage />
+              <HomePage isGuestMode={isGuestMode}/>
             ) : (
               <Navigate to="/login" replace />
             )
@@ -48,7 +54,7 @@ export default function App() {
           path="/alerts"
           element={
             isAuthenticated ? (
-              <AlertsPage />
+              <AlertsPage isGuestMode={isGuestMode}/>
             ) : (
               <Navigate to="/login" replace />
             )
@@ -58,7 +64,7 @@ export default function App() {
           path="/notepad"
           element={
             isAuthenticated ? (
-              <NotepadPage />
+              <NotepadPage isGuestMode={isGuestMode}/>
             ) : (
               <Navigate to="/login" replace />
             )
@@ -68,7 +74,7 @@ export default function App() {
           path="/saved-docs"
           element={
             isAuthenticated ? (
-              <SavedDocumentsPage />
+              <SavedDocumentsPage isGuestMode={isGuestMode}/>
             ) : (
               <Navigate to="/login" replace />
             )
@@ -78,7 +84,7 @@ export default function App() {
           path="/appointments"
           element={
             isAuthenticated ? (
-              <AppointmentSchedulerPage />
+              <AppointmentSchedulerPage isGuestMode={isGuestMode}/>
             ) : (
               <Navigate to="/login" replace />
             )

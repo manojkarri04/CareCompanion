@@ -9,7 +9,11 @@ interface Note {
   updatedAt: Date;
 }
 
-export default function NotepadPage() {
+interface NotepadPageProps {
+  isGuestMode?: boolean;
+}
+
+export default function NotepadPage({ isGuestMode = false }: NotepadPageProps) {
   // 1. Start with an empty list instead of fake data
   const [notes, setNotes] = useState<Note[]>([]);
 

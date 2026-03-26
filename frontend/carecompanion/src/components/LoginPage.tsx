@@ -3,6 +3,7 @@ import { Heart, Eye, EyeOff } from 'lucide-react';
 
 interface LoginPageProps {
   onLogin: () => void;
+  onGuestLogin: () => void;
 }
 
 export default function LoginPage({ onLogin }: LoginPageProps) {
@@ -104,7 +105,31 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
           >
             {isRegistering ? 'Sign Up' : 'Login'}
           </button>
+          
 
+          {/* Divider */}
+          <div className="relative flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300"></div>
+            </div>
+            <span className="relative bg-white px-4 text-sm text-gray-500">OR</span>
+          </div>
+
+          {/* Guest Login Button */}
+          <button
+            type="button"
+            onClick={onGuestLogin}
+            className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 text-gray-600 py-3 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all"
+          >
+            <UserCircle2 className="size-5" />
+            <span>Continue as Guest</span>
+          </button>
+
+          {/* Guest Mode Info */}
+          <p className="text-center text-xs text-gray-500 -mt-2">
+            Limited access mode – your data won't be saved permanently
+          </p>
+          
           <p className="text-center text-gray-600">
             {isRegistering ? 'Already have an account? ' : 'New User? '}
             <button

@@ -26,7 +26,11 @@ interface Chat {
   };
 }
 
-export default function ChatPage() {
+interface ChatPageProps {
+  isGuestMode?: boolean;
+}
+
+export default function ChatPage({ isGuestMode = false }: ChatPageProps) {
   const [chats, setChats] = useState<Chat[]>([
     {
       id: '1',

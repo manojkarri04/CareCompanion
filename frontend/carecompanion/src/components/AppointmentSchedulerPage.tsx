@@ -14,7 +14,11 @@ interface Appointment {
   status: 'Confirmed' | 'Pending' | 'Cancelled';
 }
 
-export default function AppointmentSchedulerPage() {
+interface AppointmentSchedulerPageProps {
+  isGuestMode?: boolean;
+}
+
+export default function AppointmentSchedulerPage({ isGuestMode = false }: AppointmentSchedulerPageProps) {
   // 2. THE MEMORY (State)
   // These hold the data while the user interacts with the page
   const [appointments, setAppointments] = useState<Appointment[]>([]);

@@ -9,6 +9,11 @@ interface Alert {
   date: string;
 }
 
+interface AlertsPageProps {
+  isGuestMode?: boolean;
+}
+
+
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);

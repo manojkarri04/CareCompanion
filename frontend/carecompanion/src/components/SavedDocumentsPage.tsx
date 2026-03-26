@@ -10,7 +10,11 @@ interface Document {
   fileSize: string;
 }
 
-export default function SavedDocumentsPage() {
+interface SavedDocumentsPageProps {
+  isGuestMode?: boolean;
+}
+
+export default function SavedDocumentsPage({ isGuestMode = false }: SavedDocumentsPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'date' | 'name'>('date');
   

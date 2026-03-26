@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import { Upload, MessageCircle, User, Settings } from 'lucide-react';
 
+interface HomePageProps {
+  isGuestMode?: boolean;
+}
+
 export default function HomePage() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -68,6 +72,24 @@ export default function HomePage() {
             <User className="size-6 text-gray-600" />
           </button>
         </header>
+         
+        {/* Guest Mode Banner */}
+        {isGuestMode && (
+          <div className="mx-8 mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
+            <Info className="size-5 text-blue-600 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-blue-900 font-medium">
+                You are using guest mode
+              </p>
+              <p className="text-blue-700 text-sm mt-1">
+                Your data won't be saved permanently. Sign up to unlock all features and save your health records.
+              </p>
+            </div>
+            <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium whitespace-nowrap">
+              Sign Up Now
+            </button>
+          </div>
+        )}
 
         <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] p-8">
           <div className="max-w-4xl w-full">
