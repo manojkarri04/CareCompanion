@@ -9,31 +9,36 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-
+  const [isRegistering, setIsRegistering] = useState(false);
   // This runs when you click the Login button
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); // Stops the page from refreshing
 
     try {
       // Send the email and password to Flask
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/login`, {
+      const endpoint = isRegistering ? '/api/register' : '/api/login';
+      const response = await fetch(`${import.meta.env.VITE_API_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email, password: password }),
       });
 
       if (response.ok) {
-        // Flask said the password is correct! Let the user in.
-        onLogin();
+        if (isRegistering) {
+          alert("🎉 Registration successful! You can now log in.");
+          setIsRegistering(false); // Turn the switch back to login mode
+          setPassword(''); // Clear the password box
+        } else {
+          onLogin(); // Let them in!
+        }
       } else {
-        // Flask said the password is wrong.
-        alert("❌ Wrong email or password. Please try again.");
+        const errorData = await response.json();
+        alert(`❌ ${errorData.error || 'Wrong email or password.'}`);
       }
     } catch (error) {
       alert("🔌 Cannot connect to the server. Make sure your Flask backend is running.");
     }
   };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md">
@@ -42,7 +47,9 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             <Heart className="size-10 text-blue-600" fill="currentColor" />
             <span className="text-blue-900 text-2xl">CareCompanion</span>
           </div>
-          <h1>Welcome Back!</h1>
+          <h1 className="text-2xl font-bold text-gray-800">
+            {isRegistering ? 'Create an Account' : 'Welcome Back!'}
+          </h1>
           <p className="text-gray-600 mt-2">Sign in to manage your health</p>
         </div>
 
@@ -95,14 +102,18 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             type="submit"
             className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-all shadow-md hover:shadow-lg"
           >
-            Login
+            {isRegistering ? 'Sign Up' : 'Login'}
           </button>
 
           <p className="text-center text-gray-600">
-            New User?{' '}
-            <a href="#" className="text-blue-600 hover:text-blue-700 transition-colors">
-              Register Here
-            </a>
+            {isRegistering ? 'Already have an account? ' : 'New User? '}
+            <button
+              type="button"
+              onClick={() => setIsRegistering(!isRegistering)}
+              className="text-blue-600 hover:text-blue-700 transition-colors font-medium"
+            >
+              {isRegistering ? 'Login Here' : 'Register Here'}
+            </button>
           </p>
         </form>
       </div>

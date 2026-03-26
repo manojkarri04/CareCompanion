@@ -101,6 +101,28 @@ def login():
         return jsonify({"message": "Login successful!"})
     return jsonify({"error": "Wrong email or password"}), 401
 
+# --- ROUTE: REGISTER ---
+@app.route('/api/register', methods=['POST'])
+def register():
+    data = request.json
+    email = data.get("email")
+    password = data.get("password")
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+
+    conn = get_db_connection()
+    try:
+        # Try to save the new user to the database
+        conn.execute('INSERT INTO users (email, password) VALUES (?, ?)', (email, password))
+        conn.commit()
+        return jsonify({"message": "Registration successful!"}), 201
+    except sqlite3.IntegrityError:
+        # The database will throw an error if the email is already in the 'users' table
+        return jsonify({"error": "This email is already registered."}), 409
+    finally:
+        conn.close()
+
 # --- ROUTES: NOTES ---
 @app.route('/api/notes', methods=['GET', 'POST'])
 def manage_notes():
