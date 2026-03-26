@@ -292,7 +292,10 @@ def delete_document(doc_id):
 def chat_with_ai():
     data = request.json
     user_message = data.get("message", "")
- 
+    
+    # THE FIX: Try to get the context from React. If it's missing, use a default backup sentence.
+    medical_context = data.get("context", "No report uploaded yet.")
+
     # We give Llama strict new rules to act as a medical keyword extractor!
     prompt = f"""You are CareCompanion, a helpful medical AI assistant.
     
@@ -303,40 +306,37 @@ def chat_with_ai():
     1. IF the user says "hi", "hello", or greets you: Simply reply, "Hello! I am CareCompanion, your personal health assistant. Please upload a medical report, or ask me a health question!" Do NOT suggest videos.
     
     2. IF the user says "yes" (or "YES", "yeah", "sure") AND there is context from a medical report: 
-       - STEP A: Use your medical knowledge to identify the 1 or 2 most important clinical conditions in the report (e.g., "Type 2 Diabetes", "Hypertension", "Glaucoma").
-       - STEP B: Generate 3 highly relevant educational YouTube videos from reputable sources (like Mayo Clinic or Cleveland Clinic).
-       - STEP C: You MUST build the YouTube search link using the exact clinical conditions you identified in Step A.
+       - STEP A: Use your medical knowledge to identify the 1 or 2 most important clinical conditions in the report.
+       - STEP B: Generate 3 highly relevant educational YouTube videos from reputable sources.
+       - STEP C: You MUST build the YouTube search link using the exact clinical conditions you identified.
        
     3. Format EACH video exactly like this on a new line:
     VIDEO: [Clear Title] | [Channel Name] | https://www.youtube.com/results?search_query=[insert+your+clinical+terms+here]
     
     4. NEVER suggest videos unless the user specifically says "yes" or explicitly asks to watch a video.
     """
-    # 3. The New Package Shape
+    
     payload = {
         "model": "llama-3.1-8b-instant",
         "messages": [{"role": "user", "content": prompt}]
     }
     
-    # 1. The New Address
     url = "https://api.groq.com/openai/v1/chat/completions"
-    
-    # 2. The Password (Headers)
     headers = {
         "Authorization": f"Bearer {os.environ.get('GROQ_API_KEY')}",
         "Content-Type": "application/json"
     }
 
     try:
-        # 4. Press Send (now with headers!)
         response = requests.post(url, headers=headers, json=payload)
         response.raise_for_status()
-        
-        # 5. Unpack the Groq box
         groq_answer = response.json()['choices'][0]['message']['content']
         return jsonify({"reply": groq_answer})
-    except:
-        "trouble connecting to Groq"
+    
+    # THE OTHER FIX: Return a proper JSON error message if Groq fails
+    except Exception as e:
+        print("Groq Error:", e)
+        return jsonify({"reply": "I'm having trouble connecting to Model. Please check the backend."}), 500
 
 if __name__ == '__main__':
     # app.run(debug=True, port=5000)
