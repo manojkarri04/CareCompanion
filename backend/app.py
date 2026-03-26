@@ -6,6 +6,9 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from datetime import datetime, timezone
 import PyPDF2
+from dotenv import load_dotenv
+# This tells Python to open your .env file and load the keys!
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app) 
@@ -70,17 +73,21 @@ def analyze_with_llama(text):
     Report:
     {text}"""
     
-    url = "http://localhost:11434/api/generate"
+    # url = "http://localhost:11434/api/generate"
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+    "Authorization": f"Bearer {os.environ.get('GROQ_API_KEY')}",
+    "Content-Type": "application/json"
+    } 
+
     payload = {
-        "model": "llama3.1",
-        "prompt": prompt,
-        "stream": False
+    "model": "llama-3.1-8b-instant",
+    "messages": [{"role": "user", "content": prompt}]
     }
-    
     try:
-        response = requests.post(url, json=payload)
+        response = requests.post(url, headers=headers, json=payload)
         response.raise_for_status()
-        return response.json()['response']
+        return response.json()['choices'][0]['message']['content']
     except Exception as e:
         print("Llama Error:", e)
         return "Error Processing Report\n- Could not reach the local Llama 3.1 model.\n- Make sure Ollama is running in the background."
@@ -305,21 +312,31 @@ def chat_with_ai():
     
     4. NEVER suggest videos unless the user specifically says "yes" or explicitly asks to watch a video.
     """
-
-    url = "http://localhost:11434/api/generate"
+    # 3. The New Package Shape
     payload = {
-        "model": "llama3.1",
-        "prompt": prompt,
-        "stream": False
+        "model": "llama-3.1-8b-instant",
+        "messages": [{"role": "user", "content": prompt}]
     }
     
+    # 1. The New Address
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    
+    # 2. The Password (Headers)
+    headers = {
+        "Authorization": f"Bearer {os.environ.get('GROQ_API_KEY')}",
+        "Content-Type": "application/json"
+    }
+
     try:
-        response = requests.post(url, json=payload)
+        # 4. Press Send (now with headers!)
+        response = requests.post(url, headers=headers, json=payload)
         response.raise_for_status()
-        return jsonify({"reply": response.json()['response']})
-    except Exception as e:
-        print("Chat Error:", e)
-        return jsonify({"reply": "I'm having trouble connecting to Llama 3.1 right now. Please make sure Ollama is running."}), 500
+        
+        # 5. Unpack the Groq box
+        groq_answer = response.json()['choices'][0]['message']['content']
+        return jsonify({"reply": groq_answer})
+    except:
+        "trouble connecting to Groq"
 
 if __name__ == '__main__':
     # app.run(debug=True, port=5000)
