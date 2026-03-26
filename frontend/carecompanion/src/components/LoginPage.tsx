@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { Heart, Eye, EyeOff } from 'lucide-react';
+import { Heart, Eye, EyeOff, UserCircle2  } from 'lucide-react';
 
 interface LoginPageProps {
   onLogin: () => void;
   onGuestLogin: () => void;
 }
 
-export default function LoginPage({ onLogin }: LoginPageProps) {
+export default function LoginPage({ onLogin, onGuestLogin }: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);

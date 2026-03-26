@@ -1,13 +1,13 @@
 import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
-import { Upload, MessageCircle, User, Settings } from 'lucide-react';
+import { Upload, MessageCircle, User, Settings,Info } from 'lucide-react';
 
 interface HomePageProps {
   isGuestMode?: boolean;
 }
 
-export default function HomePage() {
+export default function HomePage({ isGuestMode = false }: HomePageProps) {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
