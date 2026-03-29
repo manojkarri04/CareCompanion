@@ -7,6 +7,11 @@ from flask_cors import CORS
 from datetime import datetime, timezone
 import PyPDF2
 from dotenv import load_dotenv
+import jwt
+import os
+from functools import wraps
+
+
 # This tells Python to open your .env file and load the keys!
 load_dotenv()
 
@@ -17,6 +22,38 @@ CORS(app)
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+
+
+# Put this in your .env file: SUPABASE_JWT_SECRET=your_super_secret_key_from_dashboard
+
+# --- NEW SUPABASE SECURITY GUARD ---
+def check_token(f):
+    @wraps(f)
+    def wrap(*args, **kwargs):
+        # 1. Look for the key sent by React
+        auth_header = request.headers.get('Authorization')
+        if not auth_header:
+            return jsonify({'error': 'No key provided'}), 401
+        
+        try:
+            # 2. Extract the key string
+            token = auth_header.split(" ")[1]
+            
+            # 3. Read the key using your Supabase secret password
+            secret = os.environ.get('SUPABASE_JWT_SECRET')
+            decoded_token = jwt.decode(token, secret, algorithms=["HS256"], audience="authenticated")
+            
+            # 4. Save the user's ID number so your routes can use it
+            # Supabase calls the user ID 'sub'
+            request.user_id = decoded_token['sub'] 
+            
+        except Exception as e:
+            return jsonify({'error': 'Invalid key'}), 401
+            
+        return f(*args, **kwargs)
+    return wrap
+
 
 def get_db_connection():
     conn = sqlite3.connect('carecompanion.db')
