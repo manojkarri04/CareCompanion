@@ -16,7 +16,10 @@ export default function App() {
     setIsAuthenticated(true);
     setIsGuestMode(true);
   };
-
+ const handleLogin = () => {
+    setIsAuthenticated(true);
+    setIsGuestMode(false); 
+  };
   return (
     <Router>
       <Routes>
