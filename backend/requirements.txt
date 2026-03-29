@@ -118,3 +118,4 @@ webencodings==0.5.1
 websocket-client==1.9.0
 Werkzeug==3.0.1
 widgetsnbextension==4.0.15
+PyJWT==2.8.0
