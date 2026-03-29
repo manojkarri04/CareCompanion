@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Heart, Eye, EyeOff, UserCircle2  } from 'lucide-react';
+// @ts-ignore
+import { supabase } from './supabase';
 
 interface LoginPageProps {
   onLogin: () => void;
@@ -12,34 +14,42 @@ export default function LoginPage({ onLogin, onGuestLogin }: LoginPageProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   // This runs when you click the Login button
+
+// 1. Import Supabase instead of Firebase
+// ... keep your other imports like Heart, Eye, etc.
+
+// ... inside your component:
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); // Stops the page from refreshing
+    e.preventDefault(); 
 
     try {
-      // Send the email and password to Flask
-      const endpoint = isRegistering ? '/api/register' : '/api/login';
-      const response = await fetch(`${import.meta.env.VITE_API_URL}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email, password: password }),
-      });
-
-      if (response.ok) {
-        if (isRegistering) {
-          alert("🎉 Registration successful! You can now log in.");
-          setIsRegistering(false); // Turn the switch back to login mode
-          setPassword(''); // Clear the password box
-        } else {
-          onLogin(); // Let them in!
-        }
+      if (isRegistering) {
+        // Tell Supabase to make a new user
+        const { error } = await supabase.auth.signUp({
+          email: email,
+          password: password,
+        });
+        
+        if (error) throw error;
+        
+        alert("🎉 Registration successful! You can now log in.");
+        setIsRegistering(false); 
+        setPassword(''); 
       } else {
-        const errorData = await response.json();
-        alert(`❌ ${errorData.error || 'Wrong email or password.'}`);
+        // Tell Supabase to log the user in
+        const { error } = await supabase.auth.signInWithPassword({
+          email: email,
+          password: password,
+        });
+        
+        if (error) throw error;
+        onLogin(); // Let them in!
       }
-    } catch (error) {
-      alert("🔌 Cannot connect to the server. Make sure your Flask backend is running.");
+    } catch (error: any) {
+      alert(`❌ ${error.message}`);
     }
   };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md">

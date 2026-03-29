@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import { User, Settings, Plus, Trash2, Edit } from 'lucide-react';
+import { supabase } from './supabase';
 
 interface Alert {
   id: string;
@@ -12,7 +13,6 @@ interface Alert {
 interface AlertsPageProps {
   isGuestMode?: boolean;
 }
-
 
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -26,7 +26,11 @@ export default function AlertsPage() {
   // 1. Fetch alerts when the page opens
 
 useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL}/api/alerts`)
+  const fetchAlerts = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    fetch(`${import.meta.env.VITE_API_URL}/api/alerts`,{
+      headers: { 'Authorization': `Bearer ${session?.access_token}` }
+    })
       .then((response) => response.json())
       .then((data) => {
         const realAlerts = data.map((alert: any) => ({
@@ -36,12 +40,15 @@ useEffect(() => {
         setAlerts(realAlerts);
       })
       .catch((error) => console.log("Error loading alerts:", error));
+    };
+    fetchAlerts();
   }, []);
 
   // 2. Save a new alert to the database
   const handleAddAlert = async () => {
     if (newAlert.medicationName && newAlert.time && newAlert.date) {
       try {
+        const { data: { session } } = await supabase.auth.getSession();
         const response = await fetch(`${import.meta.env.VITE_API_URL}/api/alerts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -65,8 +72,10 @@ useEffect(() => {
   // 3. Delete an alert from the database
   const handleDeleteAlert = async (id: string) => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/alerts/${id}`, {
+        const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/alerts/${id}`,{
         method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session?.access_token}`}
       });
 
       if (response.ok) {

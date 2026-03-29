@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import { Upload, MessageCircle, User, Settings,Info } from 'lucide-react';
+import { supabase } from './supabase';
 
 interface HomePageProps {
   isGuestMode?: boolean;
@@ -34,8 +35,12 @@ export default function HomePage({ isGuestMode = false }: HomePageProps) {
 
       try {
         // Send it to Flask!
+        const { data: { session } } = await supabase.auth.getSession();
         const response = await fetch(`${import.meta.env.VITE_API_URL}/api/analyze`, {
           method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${session?.access_token}` 
+          },
           body: formData,
         });
 

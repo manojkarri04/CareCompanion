@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import { Send, Paperclip, Plus, User, Settings } from 'lucide-react';
+import { supabase } from './supabase';
 
 interface Message {
   id: string;
@@ -134,9 +135,12 @@ export default function ChatPage({isGuestMode = false}: ChatPageProps) {
     setIsTyping(true);
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(`${import.meta.env.VITE_API_URL}/api/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+         },
         body: JSON.stringify({ message: userMessage.content }),
       });
 
@@ -227,8 +231,12 @@ export default function ChatPage({isGuestMode = false}: ChatPageProps) {
       formData.append('file', file);
 
       try {
+        const { data: { session } } = await supabase.auth.getSession();
         const response = await fetch(`${import.meta.env.VITE_API_URL}/api/analyze`, {
           method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${session?.access_token}` 
+          },
           body: formData,
         });
 

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import { User, Settings, Plus, X, Info, RefreshCw } from 'lucide-react';
+import { supabase } from './supabase';
 
 // 1. THE BLUEPRINT
 // This tells React what an Appointment looks like
@@ -37,7 +38,11 @@ export default function AppointmentSchedulerPage({ isGuestMode = false }: Appoin
   // This runs once when you open the page
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL}/api/appointments`)
+    const loadAppointments = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      fetch(`${import.meta.env.VITE_API_URL}/api/appointments`,{
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
+      })
       .then((response) => response.json())
       .then((data) => {
         // Fix the IDs to be text instead of numbers
@@ -48,8 +53,9 @@ export default function AppointmentSchedulerPage({ isGuestMode = false }: Appoin
         setAppointments(realApts);
       })
       .catch((error) => console.error("Error loading appointments:", error));
+    };
+     loadAppointments(); 
   }, []);
-
   // 4. HELPER: CLOSE THE POPUP
   const handleCloseModal = () => {
     setShowNewAppointmentModal(false);
@@ -79,10 +85,13 @@ export default function AppointmentSchedulerPage({ isGuestMode = false }: Appoin
     };
 
     if (editingId) {
+      const { data: { session } } = await supabase.auth.getSession();
       try {
         const response = await fetch(`${import.meta.env.VITE_API_URL}/api/appointments/${editingId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json',
+               'Authorization': `Bearer ${session?.access_token}`
+           },
           body: JSON.stringify(appointmentData),
         });
 
@@ -91,6 +100,7 @@ export default function AppointmentSchedulerPage({ isGuestMode = false }: Appoin
           updatedApt.id = String(updatedApt.id);
           setAppointments(appointments.map(apt => apt.id === editingId ? updatedApt : apt));
           handleCloseModal();
+          
         } else {
           // If Flask sends back a bad response
           alert("❌ The backend server refused to update the appointment.");
@@ -101,10 +111,13 @@ export default function AppointmentSchedulerPage({ isGuestMode = false }: Appoin
       }
 
     } else {
+      const { data: { session } } = await supabase.auth.getSession();
       try {
         const response = await fetch(`${import.meta.env.VITE_API_URL}/api/appointments`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json',
+             'Authorization': `Bearer ${session?.access_token}`
+           },
           body: JSON.stringify(appointmentData),
         });
 
@@ -146,9 +159,14 @@ export default function AppointmentSchedulerPage({ isGuestMode = false }: Appoin
 
   // 7. CANCEL APPOINTMENT
   const handleCancelAppointment = async (id: string) => {
+   const { data: { session } } = await supabase.auth.getSession();
     try {
+
       const response = await fetch(`${import.meta.env.VITE_API_URL}/api/appointments/${id}/cancel`, {
-        method: 'PUT',
+         method: 'PUT',
+         headers: { 'Content-Type': 'application/json',
+             'Authorization': `Bearer ${session?.access_token}`
+           },
       });
 
       if (response.ok) {

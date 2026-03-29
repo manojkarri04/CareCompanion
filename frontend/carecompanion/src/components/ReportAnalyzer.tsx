@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { supabase } from './supabase';
 
 export default function ReportAnalyzer() {
   const [file, setFile] = useState<File | null>(null);

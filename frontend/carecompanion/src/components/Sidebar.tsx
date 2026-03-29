@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Home, Bell, FileText, Calendar, Heart,FolderOpen } from 'lucide-react';
+import { supabase } from './supabase';
 
 interface SidebarProps {
   activePage: 'home' | 'alerts' | 'notepad' |'saved-docs'| 'appointments';
