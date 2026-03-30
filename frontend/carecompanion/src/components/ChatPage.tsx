@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import { Send, Paperclip, Plus, User, Settings } from 'lucide-react';
 import { supabase } from './supabase';
+import { io } from 'socket.io-client';
+const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:5000');
 
 interface Message {
   id: string;
@@ -58,6 +60,59 @@ export default function ChatPage({isGuestMode = false}: ChatPageProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentChat?.messages]);
+   
+  useEffect(() => {
+    // 1. Ask the user if we can show popups when the page loads
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    // 2. Listen for a special signal from Flask (we will call it 'report_ready')
+    socket.on('report_ready', (data) => {
+      
+      // 3. The WhatsApp trick: Is the user looking at another tab?
+      if (document.hidden && Notification.permission === 'granted') {
+        // Show the popup on their screen!
+        new Notification('CareCompanion', {
+          body: data.message || 'Your medical report summary is ready!',
+        });
+        
+        // Bonus: You can add sound later if you want!
+      }
+      
+      // Note: Later, we will also add the message to the chat screen here.
+    });
+
+    // Clean up the listener when the user leaves the page
+    return () => {
+      socket.off('report_ready');
+    };
+  }, []); // The empty brackets mean this setup only runs once
+
+
+// The Connection Doctor
+  const checkNetworkSpeed = async () => {
+    // 1. Start the stopwatch
+    const startTime = Date.now(); 
+
+    try {
+      // 2. Send the tiny ping request to Flask
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/ping`);
+      
+      if (response.ok) {
+        // 3. Stop the stopwatch
+        const endTime = Date.now(); 
+        const pingTime = endTime - startTime; // The time in milliseconds
+        
+        return pingTime;
+      }
+      return -1;
+    } catch (error) {
+      // If the server is totally offline or the internet is down
+      return -1; 
+    }
+  };
+
 
   const createNewChat = () => {
     const newChat: Chat = {
@@ -200,6 +255,22 @@ export default function ChatPage({isGuestMode = false}: ChatPageProps) {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0 && currentChat) {
+      const pingMs = await checkNetworkSpeed();
+      if (pingMs === -1) 
+      {
+         alert("You are offline! Cannot connect to the server.");
+         return; // Stop the upload
+      } 
+      else if (pingMs > 1000) {
+        // If it takes more than 1000ms (1 full second) for a tiny ping, 
+        // the network is very slow.
+        const userWantsToContinue = window.confirm(
+          `Your network is very slow right now (Ping: ${pingMs}ms). The medical report upload might fail. Do you still want to try?`
+        );
+        if (!userWantsToContinue) {
+          return; // Stop the upload
+        }
+      }
       const file = files[0];
       const fileName = file.name;
 
