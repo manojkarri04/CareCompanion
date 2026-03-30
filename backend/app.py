@@ -2,30 +2,37 @@ import os
 import sqlite3
 import requests
 import json
+import time
+import threading
+import PyPDF2
+import jwt
+import os
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from datetime import datetime, timezone
-import PyPDF2
+from flask_socketio import SocketIO
 from dotenv import load_dotenv
-import jwt
-import os
 from functools import wraps
 
 
 # This tells Python to open your .env file and load the keys!
 load_dotenv()
-
 app = Flask(__name__)
+# This lets your React app on port 5173 talk to Flask on port 5000
 CORS(app) 
+
+# 1. Set up the WebSocket tool
+# cors_allowed_origins="*" makes sure React is allowed to connect
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+# This is the route your React app calls when you upload a file
+
 
 # --- FOLDER SETUP ---
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-
-
-# Put this in your .env file: SUPABASE_JWT_SECRET=your_super_secret_key_from_dashboard
 
 # --- NEW SUPABASE SECURITY GUARD ---
 def check_token(f):
@@ -79,6 +86,13 @@ def setup_database():
     conn.close()
 
 setup_database()
+
+# --- NETWORK TOOLS ---
+@app.route('/api/ping', methods=['GET'])
+def ping_server():
+    # We do not do any AI work here. 
+    # We just send a reply back as fast as humanly possible!
+    return jsonify({"reply": "pong"}), 200
 
 # --- HELPER FUNCTIONS ---
 def extract_text_from_pdf(file_path):
@@ -268,7 +282,25 @@ def delete_alert(alert_id):
     conn.close()
     return jsonify({"message": "Deleted successfully"})
 
-# --- ROUTES: DOCUMENTS & AI ANALYSIS ---
+# This function does all the heavy, slow AI work in the background.
+def background_ai_task(filename, extracted_text):
+    print(f"Assistant Doctor started reading {filename}...")
+    
+    # 1. Have Llama 3.1 read the text (Simulated by our 5-second pause)
+    import time
+    time.sleep(5) 
+    summary_text = analyze_with_llama(extracted_text)
+
+    # 2. Network Magic: Alert the specific user that their report is done!
+    # We include the actual summary in the socket message now.
+    socketio.emit('report_ready', {
+        'message': f'Your summary for {filename} is ready!',
+        'analysis': summary_text
+    })
+    print(f"Assistant Doctor finished {filename}!")
+
+
+# --- THE MAIN DOCTOR (Main Server Route) ---
 @app.route('/api/analyze', methods=['POST'])
 def analyze_report():
     if 'file' not in request.files:
@@ -279,6 +311,7 @@ def analyze_report():
         return jsonify({"error": "No selected file"}), 400
         
     try:
+        # 1. FAST WORK: Save the file and database details immediately
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(file_path)
         file_size_bytes = os.path.getsize(file_path)
@@ -295,19 +328,28 @@ def analyze_report():
         if file_type == 'pdf':
             extracted_text = extract_text_from_pdf(file_path)
         else:
-            extracted_text = "Image or standard text document uploaded. (OCR required for images)."
+            extracted_text = "Image or standard text document uploaded."
 
-        summary_text = analyze_with_llama(extracted_text)
+        # 2. HIRE THE ASSISTANT: Spawn a new thread for the heavy AI work
+        # We pass the text to the background function so the Main Doctor can walk away.
+        ai_thread = threading.Thread(
+            target=background_ai_task, 
+            args=(file.filename, extracted_text)
+        )
+        ai_thread.start() # Start the background worker!
 
+        # 3. IMMEDIATELY REPLY: The Main Doctor tells the user "We are working on it!"
+        # We do not wait 5 seconds anymore. This returns instantly.
         return jsonify({
-            "status": "success",
-            "analysis": summary_text
-        })
+            "status": "processing",
+            "message": "File uploaded! The AI is reading it in the background."
+        }), 202 # 202 means "Accepted for processing"
         
     except Exception as e:
         print("Upload Error:", e)
         return jsonify({"error": "Could not process the file."}), 500
-
+    
+    
 @app.route('/api/documents', methods=['GET'])
 def get_documents():
     conn = get_db_connection()
@@ -376,5 +418,6 @@ def chat_with_ai():
         return jsonify({"reply": "I'm having trouble connecting to Model. Please check the backend."}), 500
 
 if __name__ == '__main__':
-    # app.run(debug=True, port=5000)
-    app.run()
+    print("Starting CareCompanion server with WebSockets...")
+    # 5. IMPORTANT: Use socketio.run instead of app.run!
+    socketio.run(app, debug=True, port=5000)
