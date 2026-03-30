@@ -14,7 +14,7 @@ interface AlertsPageProps {
   isGuestMode?: boolean;
 }
 
-export default function AlertsPage() {
+  export default function AlertsPage({ isGuestMode }: AlertsPageProps) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newAlert, setNewAlert] = useState({
@@ -51,7 +51,10 @@ useEffect(() => {
         const { data: { session } } = await supabase.auth.getSession();
         const response = await fetch(`${import.meta.env.VITE_API_URL}/api/alerts`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token}`
+          },
           body: JSON.stringify(newAlert),
         });
 
@@ -107,6 +110,8 @@ useEffect(() => {
           <div className="max-w-6xl mx-auto">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-gray-800">Your Alerts</h2>
+              {/* Only show this button if NOT in guest mode */}
+               {!isGuestMode && (
               <button
                 onClick={() => setShowAddModal(true)}
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
@@ -114,6 +119,7 @@ useEffect(() => {
                 <Plus className="size-5" />
                 Add Alert
               </button>
+                )}
             </div>
 
             {alerts.length === 0 ? (
