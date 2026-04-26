@@ -1,22 +1,60 @@
 import os
-import sqlite3
 import requests
 import json
 import time
 import threading
 import PyPDF2
 import jwt
-import os
-from flask import Flask, jsonify, request
+import io
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from datetime import datetime, timezone
 from flask_socketio import SocketIO
 from dotenv import load_dotenv
 from functools import wraps
+from data_structures.linear.sorter import AppointmentSorter
+from supabase import create_client, Client
+from flask import Response # We will need this later for downloading
+from functools import wraps
+from groq import Groq
+
+
+from pydantic import BaseModel, Field
+from typing import List, Optional
+from llama_index.core import Document, VectorStoreIndex, Settings
+from llama_index.llms.groq import Groq as LlamaGroq
+
+# Virtue Foundation Hackathon Schema
+class FacilityData(BaseModel):
+    ngos: List[str] = Field(description="NGO names present in the text")
+    facilities: List[str] = Field(description="Healthcare facility names present in the text")
+    facilityTypeId: Optional[str] = Field(description="hospital, pharmacy, doctor, clinic, dentist")
+    operatorTypeId: Optional[str] = Field(description="public or private")
+    specialties: List[str] = Field(description="Exact matches only: internalMedicine, pediatrics, cardiology, generalSurgery, etc.")
+    procedure: List[str] = Field(description="Specific clinical services performed")
+    equipment: List[str] = Field(description="Physical medical devices, imaging machines, infrastructure")
+    capacity: Optional[int] = Field(description="Overall inpatient bed capacity")
+
+# Hook up LlamaIndex to your existing Groq model
+Settings.llm = LlamaGroq(model="llama-3.1-8b-instant", api_key=os.environ.get("GROQ_API_KEY"))
+
+
+
+my_sorter = AppointmentSorter() 
 
 
 # This tells Python to open your .env file and load the keys!
 load_dotenv()
+# --- SUPABASE CLOUD CONNECTION ---
+supabase_url = os.environ.get("SUPABASE_URL")
+supabase_key = os.environ.get("SUPABASE_KEY")
+
+if not supabase_url or not supabase_key:
+    print("WARNING: Supabase keys are missing from your .env file!")
+
+supabase: Client = create_client(supabase_url, supabase_key)
+
+
 app = Flask(__name__)
 # This lets your React app on port 5173 talk to Flask on port 5000
 CORS(app) 
@@ -26,12 +64,90 @@ CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # This is the route your React app calls when you upload a file
-
-
 # --- FOLDER SETUP ---
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+
+
+# Initialize Groq Client (Ensure GROQ_API_KEY is in your environment variables)
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+def generate_video_script(medical_report_text):
+    """
+    Takes a patient's medical report and uses Llama 3.1 to generate a 
+    3-5 scene storyboard formatted strictly as JSON.
+    """
+    
+    system_prompt = """
+    You are 'The Director', an expert medical communicator and video storyboard artist for the CareCompanion system. 
+    Your job is to translate complex ophthalmic medical reports into an easy-to-understand, empathetic educational video script for a patient.
+    
+    CRITICAL RULES:
+    1. You MUST extract exactly 3 to 5 key visual scenes from the provided report.
+    2. For each scene, write a short, comforting 'narration' script for the AI voiceover.
+    3. For each scene, write a highly detailed 'visual_prompt'. This prompt will be sent directly to the FLUX.2 image generation model. 
+       - Visual prompts should describe static, clean, modern medical illustrations.
+       - Use comma-separated descriptors (e.g., "A clean modern medical illustration of a human eye, cross-section, showing the retina, soft blue and white lighting, highly detailed, 8k resolution").
+    4. You MUST return ONLY valid JSON. Do not include any markdown formatting, conversational filler, or introductory text.
+    
+    JSON SCHEMA:
+    {
+      "scenes": [
+        {
+          "scene_number": 1,
+          "narration": "String (What the voiceover will say)",
+          "visual_prompt": "String (The prompt for the FLUX.2 model)"
+        }
+      ]
+    }
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant", # Or llama-3.1-70b-versatile for higher reasoning
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Here is the medical report:\n{medical_report_text}"}
+            ],
+            response_format={"type": "json_object"}, # Forces strict JSON output
+            temperature=0.5, # Keep it relatively deterministic 
+        )
+        
+        # Parse the JSON string returned by Groq into a Python dictionary
+        storyboard = json.loads(response.choices[0].message.content)
+        return storyboard
+        
+    except Exception as e:
+        print(f"Error generating script: {e}")
+        return None
+
+# Example Flask Route
+@app.route('/api/generate-script', methods=['POST'])
+def handle_script_generation():
+    data = request.json
+    report_text = data.get('report_text')
+    
+    if not report_text:
+        return jsonify({"error": "No report text provided"}), 400
+        
+    storyboard = generate_video_script(report_text)
+    
+    if storyboard:
+        return jsonify({"status": "success", "storyboard": storyboard}), 200
+    else:
+        return jsonify({"status": "error", "message": "Failed to generate script"}), 500
+
+
+
+
+
+
+
+
+
+
 
 
 # --- NEW SUPABASE SECURITY GUARD ---
@@ -46,7 +162,6 @@ def check_token(f):
         try:
             # 2. Extract the key string
             token = auth_header.split(" ")[1]
-            
             # 3. Read the key using your Supabase secret password
             secret = os.environ.get('SUPABASE_JWT_SECRET')
             decoded_token = jwt.decode(token, secret, algorithms=["HS256"], audience="authenticated")
@@ -62,48 +177,22 @@ def check_token(f):
     return wrap
 
 
-def get_db_connection():
-    conn = sqlite3.connect('carecompanion.db')
-    conn.row_factory = sqlite3.Row 
-    return conn
-
-# --- 1. SETUP DATABASE ---
-def setup_database():
-    conn = get_db_connection()
-    
-    conn.execute('CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)')
-    conn.execute('CREATE TABLE IF NOT EXISTS appointments (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, time TEXT NOT NULL, doctor TEXT NOT NULL, specialty TEXT NOT NULL, location TEXT, status TEXT NOT NULL)')
-    conn.execute('CREATE TABLE IF NOT EXISTS alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, medicationName TEXT NOT NULL, time TEXT NOT NULL, date TEXT NOT NULL)')
-    conn.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL)')
-    conn.execute('CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY AUTOINCREMENT, fileName TEXT NOT NULL, uploadDate TEXT NOT NULL, fileType TEXT NOT NULL, fileSize TEXT NOT NULL)')
-    
-    # Create test user if none exists
-    cursor = conn.execute('SELECT COUNT(*) FROM users')
-    if cursor.fetchone()[0] == 0:
-        conn.execute('INSERT INTO users (email, password) VALUES (?, ?)', ('manoj@test.com', 'password123'))
-        
-    conn.commit()
-    conn.close()
-
-setup_database()
-
 # --- NETWORK TOOLS ---
 @app.route('/api/ping', methods=['GET'])
 def ping_server():
-    # We do not do any AI work here. 
-    # We just send a reply back as fast as humanly possible!
     return jsonify({"reply": "pong"}), 200
 
 # --- HELPER FUNCTIONS ---
-def extract_text_from_pdf(file_path):
+def extract_text_from_bytes(file_bytes):
     text = ""
-    with open(file_path, 'rb') as f:
-        reader = PyPDF2.PdfReader(f)
-        for page in reader.pages:
-            extracted = page.extract_text()
-            if extracted:
-                text += extracted + "\n"
+    # Instead of reading from the hard drive, we read directly from RAM
+    reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+    for page in reader.pages:
+        extracted = page.extract_text()
+        if extracted:
+            text += extracted + "\n"
     return text
+
 
 def format_size(size_in_bytes):
     if size_in_bytes >= 1024 * 1024:
@@ -148,44 +237,11 @@ def analyze_with_llama(text):
 def home():
     return "CareCompanion Backend is running perfectly with all routes!"
 
-# --- ROUTE: LOGIN ---
-@app.route('/api/login', methods=['POST'])
-def login():
-    data = request.json
-    conn = get_db_connection()
-    user = conn.execute('SELECT * FROM users WHERE email = ? AND password = ?', (data.get("email"), data.get("password"))).fetchone()
-    conn.close()
-    if user:
-        return jsonify({"message": "Login successful!"})
-    return jsonify({"error": "Wrong email or password"}), 401
-
-# --- ROUTE: REGISTER ---
-@app.route('/api/register', methods=['POST'])
-def register():
-    data = request.json
-    email = data.get("email")
-    password = data.get("password")
-
-    if not email or not password:
-        return jsonify({"error": "Email and password are required"}), 400
-
-    conn = get_db_connection()
-    try:
-        # Try to save the new user to the database
-        conn.execute('INSERT INTO users (email, password) VALUES (?, ?)', (email, password))
-        conn.commit()
-        return jsonify({"message": "Registration successful!"}), 201
-    except sqlite3.IntegrityError:
-        # The database will throw an error if the email is already in the 'users' table
-        return jsonify({"error": "This email is already registered."}), 409
-    finally:
-        conn.close()
-
 # --- ROUTES: NOTES ---
 @app.route('/api/notes', methods=['GET', 'POST'])
 def manage_notes():
     # Step 1: Open the connection to the database
-    db_connection = get_db_connection()
+    # db_connection = get_db_connection()
     # ACTION 1: The user wants to SAVE a new note
     if request.method == 'POST':
         # 1. Open the package React sent us and grab the text
@@ -193,115 +249,104 @@ def manage_notes():
         note_text = incoming_data.get("content")
         # 2. Check the clock to see what time it is right now
         current_time = datetime.now(timezone.utc).isoformat()
-        # 3. Put the new note into the database table
-        cursor = db_connection.execute(
-            'INSERT INTO notes (content, created_at, updated_at) VALUES (?, ?, ?)', 
-            (note_text, current_time, current_time)
-        )
-        # 4. Save the changes permanently
-        db_connection.commit()
-        # 5. Find the ID number of the note we just created (e.g., Note #5)
-        new_note_id = cursor.lastrowid
-        # 6. Grab that exact note back out of the database
-        new_note = db_connection.execute(
-            'SELECT * FROM notes WHERE id = ?', 
-            (new_note_id,)
-        ).fetchone()
-        # 7. Close the database door
-        db_connection.close()
-        # 8. Send the finished note back to the React screen
-        return jsonify(dict(new_note))
+        # 3. Put the new note into the database table 
+
+        response = supabase.table('notes').insert({
+            'user_id': request.user_id,
+            'content': data.get("content"),
+            'created_at': current_time,
+            'updated_at': current_time
+        }).execute()
 
     # ACTION 2: The user wants to READ all notes
 
     if request.method == 'GET':
-        # 1. Grab all the notes, sorting them so the newest ones are at the top (DESC)
-        all_notes = db_connection.execute('SELECT * FROM notes ORDER BY id DESC').fetchall()
-        # 2. Close the database door
-        db_connection.close()
-        # 3. Turn the database list into a normal list and send it to React
-        return jsonify([dict(note) for note in all_notes])
+        response = supabase.table('notes').select('*').eq('user_id', request.user_id).order('id', desc=True).execute()
+        return jsonify(response.data)
+    
 
 # --- ROUTES: APPOINTMENTS ---
 @app.route('/api/appointments', methods=['GET', 'POST'])
 def manage_appointments():
-    conn = get_db_connection()
     if request.method == 'POST':
         data = request.json
-        cursor = conn.execute('INSERT INTO appointments (date, time, doctor, specialty, location, status) VALUES (?, ?, ?, ?, ?, ?)', 
-                              (data.get("date"), data.get("time"), data.get("doctor"), data.get("specialty"), data.get("location", "TBD"), data.get("status", "Confirmed")))
-        conn.commit()
-        new_apt = conn.execute('SELECT * FROM appointments WHERE id = ?', (cursor.lastrowid,)).fetchone()
-        conn.close()
-        return jsonify(dict(new_apt))
+        response = supabase.table('appointments').insert({
+            'user_id': request.user_id,
+            'date': data.get("date"),
+            'time': data.get("time"),
+            'doctor': data.get("doctor"),
+            'specialty': data.get("specialty"),
+            'location': data.get("location", "TBD"),
+            'status': data.get("status", "Confirmed")
+        }).execute()
+        return jsonify(response.data[0])
 
-    all_apts = conn.execute('SELECT * FROM appointments ORDER BY id DESC').fetchall()
-    conn.close()
-    return jsonify([dict(apt) for apt in all_apts])
+    # ACTION 2: The user wants to READ all appointments
+    if request.method == 'GET':
+        response = supabase.table('appointments').select('*').eq('user_id', request.user_id).execute()
+        sorted_apts = my_sorter.merge_sort(response.data)
+        return jsonify(sorted_apts)
 
-@app.route('/api/appointments/<int:apt_id>/cancel', methods=['PUT'])
+@app.route('/api/appointments/<apt_id>/cancel', methods=['PUT'])
+@check_token
 def cancel_appointment(apt_id):
-    conn = get_db_connection()
-    conn.execute("UPDATE appointments SET status = 'Cancelled' WHERE id = ?", (apt_id,))
-    conn.commit()
-    conn.close()
+    supabase.table('appointments').update({'status': 'Cancelled'}).eq('id', apt_id).eq('user_id', request.user_id).execute()
     return jsonify({"message": "Cancelled"})
 
-@app.route('/api/appointments/<int:apt_id>', methods=['PUT'])
+@app.route('/api/appointments/<apt_id>', methods=['PUT'])
+@check_token
 def update_appointment(apt_id):
     data = request.json
-    conn = get_db_connection()
-    conn.execute('UPDATE appointments SET date = ?, time = ?, doctor = ?, specialty = ?, location = ? WHERE id = ?', 
-                 (data.get("date"), data.get("time"), data.get("doctor"), data.get("specialty"), data.get("location", "TBD"), apt_id))
-    conn.commit()
-    updated_apt = conn.execute('SELECT * FROM appointments WHERE id = ?', (apt_id,)).fetchone()
-    conn.close()
-    return jsonify(dict(updated_apt))
+    response = supabase.table('appointments').update({
+        'date': data.get("date"),
+        'time': data.get("time"),
+        'doctor': data.get("doctor"),
+        'specialty': data.get("specialty"),
+        'location': data.get("location", "TBD")
+    }).eq('id', apt_id).eq('user_id', request.user_id).execute()
+    return jsonify(response.data[0])
 
 # --- ROUTES: ALERTS ---
 @app.route('/api/alerts', methods=['GET', 'POST'])
+@check_token
 def manage_alerts():
-    conn = get_db_connection()
     if request.method == 'POST':
         data = request.json
-        cursor = conn.execute('INSERT INTO alerts (medicationName, time, date) VALUES (?, ?, ?)', (data.get("medicationName"), data.get("time"), data.get("date")))
-        conn.commit()
-        new_alert = conn.execute('SELECT * FROM alerts WHERE id = ?', (cursor.lastrowid,)).fetchone()
-        conn.close()
-        return jsonify(dict(new_alert))
+        response = supabase.table('alerts').insert({
+            'user_id': request.user_id,
+            'medicationName': data.get("medicationName"),
+            'time': data.get("time"),
+            'date': data.get("date")
+        }).execute()
+        return jsonify(response.data[0])
 
-    all_alerts = conn.execute('SELECT * FROM alerts ORDER BY id DESC').fetchall()
-    conn.close()
-    return jsonify([dict(a) for a in all_alerts])
+    if request.method == 'GET':
+        response = supabase.table('alerts').select('*').eq('user_id', request.user_id).order('id', desc=True).execute()
+        return jsonify(response.data)
 
-@app.route('/api/alerts/<int:alert_id>', methods=['DELETE'])
+
+@app.route('/api/alerts/<alert_id>', methods=['DELETE'])
+@check_token
 def delete_alert(alert_id):
-    conn = get_db_connection()
-    conn.execute('DELETE FROM alerts WHERE id = ?', (alert_id,))
-    conn.commit()
-    conn.close()
+    supabase.table('alerts').delete().eq('id', alert_id).eq('user_id', request.user_id).execute()
     return jsonify({"message": "Deleted successfully"})
 
-# This function does all the heavy, slow AI work in the background.
+
+# --- BACKGROUND DOCTOR TASK ---
 def background_ai_task(filename, extracted_text):
     print(f"Assistant Doctor started reading {filename}...")
-    
-    # 1. Have Llama 3.1 read the text (Simulated by our 5-second pause)
     import time
     time.sleep(5) 
     summary_text = analyze_with_llama(extracted_text)
-
-    # 2. Network Magic: Alert the specific user that their report is done!
-    # We include the actual summary in the socket message now.
     socketio.emit('report_ready', {
         'message': f'Your summary for {filename} is ready!',
         'analysis': summary_text
     })
     print(f"Assistant Doctor finished {filename}!")
 
-
 # --- THE MAIN DOCTOR (Main Server Route) ---
 @app.route('/api/analyze', methods=['POST'])
+# @check_token # Security Check: Only logged-in users can upload!
 def analyze_report():
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
@@ -311,59 +356,105 @@ def analyze_report():
         return jsonify({"error": "No selected file"}), 400
         
     try:
-        # 1. FAST WORK: Save the file and database details immediately
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-        file.save(file_path)
-        file_size_bytes = os.path.getsize(file_path)
+        # 1. READ INTO MEMORY (No saving to the UPLOAD_FOLDER!)
+        file_bytes = file.read()
+        file_size_bytes = len(file_bytes)
         formatted_size = format_size(file_size_bytes)
+        
         file_extension = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else 'document'
         file_type = 'pdf' if file_extension == 'pdf' else 'image' if file_extension in ['jpg', 'png', 'jpeg'] else 'document'
-        current_date = datetime.now(timezone.utc).isoformat()
 
-        conn = get_db_connection()
-        conn.execute('INSERT INTO documents (fileName, uploadDate, fileType, fileSize) VALUES (?, ?, ?, ?)', (file.filename, current_date, file_type, formatted_size))
-        conn.commit()
-        conn.close()
+        # 2. UPLOAD TO SUPABASE STORAGE BUCKET
+        # We put the file inside a folder named after the user's ID for absolute security.
+        storage_path = f"{request.user_id}/{file.filename}"
+        
+        # 'upsert' means if they upload a file with the same name twice, it just overwrites it safely.
+        supabase.storage.from_("medical_documents").upload(
+            file=file_bytes, 
+            path=storage_path, 
+            file_options={"content-type": file.content_type, "upsert": "true"}
+        )
 
+        # 3. SAVE RECORD TO SUPABASE DATABASE
+        supabase.table('saved_documents').insert({
+            'user_id': request.user_id,
+            'file_name': file.filename,
+            'file_type': file_type,
+            'file_size': formatted_size
+        }).execute()
+
+        # 4. READ THE TEXT FOR THE AI
         if file_type == 'pdf':
-            extracted_text = extract_text_from_pdf(file_path)
+            extracted_text = extract_text_from_bytes(file_bytes)
         else:
             extracted_text = "Image or standard text document uploaded."
 
-        # 2. HIRE THE ASSISTANT: Spawn a new thread for the heavy AI work
-        # We pass the text to the background function so the Main Doctor can walk away.
+        # 5. HIRE THE ASSISTANT (Background Thread)
         ai_thread = threading.Thread(
             target=background_ai_task, 
             args=(file.filename, extracted_text)
         )
-        ai_thread.start() # Start the background worker!
+        ai_thread.start() 
 
-        # 3. IMMEDIATELY REPLY: The Main Doctor tells the user "We are working on it!"
-        # We do not wait 5 seconds anymore. This returns instantly.
+        # 6. IMMEDIATELY REPLY
         return jsonify({
             "status": "processing",
-            "message": "File uploaded! The AI is reading it in the background."
-        }), 202 # 202 means "Accepted for processing"
+            "message": "File uploaded securely to the cloud! AI is reading it."
+        }), 202 
         
     except Exception as e:
         print("Upload Error:", e)
         return jsonify({"error": "Could not process the file."}), 500
-    
-    
-@app.route('/api/documents', methods=['GET'])
+   
+@check_token # We add our security guard here so only logged-in users can fetch!
 def get_documents():
-    conn = get_db_connection()
-    all_docs = conn.execute('SELECT * FROM documents ORDER BY id DESC').fetchall()
-    conn.close()
-    return jsonify([dict(doc) for doc in all_docs])
+    try:
+        response = supabase.table('saved_documents') \
+            .select('*') \
+            .eq('user_id', request.user_id) \
+            .order('upload_date', desc=True) \
+            .execute()
+            
+        # Supabase automatically formats the data as a clean list for us!
+        return jsonify(response.data)
+        
+    except Exception as e:
+        print("Database Error:", e)
+        return jsonify({"error": "Could not fetch documents"}), 500
 
-@app.route('/api/documents/<int:doc_id>', methods=['DELETE'])
+
+
+@app.route('/api/documents/<doc_id>', methods=['DELETE'])
+@check_token
 def delete_document(doc_id):
-    conn = get_db_connection()
-    conn.execute('DELETE FROM documents WHERE id = ?', (doc_id,))
-    conn.commit()
-    conn.close()
-    return jsonify({"message": "Document deleted"})
+    try:
+        # 1. Find the file name first so we can delete the physical PDF
+        doc = supabase.table('saved_documents').select('file_name').eq('id', doc_id).eq('user_id', request.user_id).execute()
+        if doc.data:
+            filename = doc.data[0]['file_name']
+            storage_path = f"{request.user_id}/{filename}"
+            # 2. Delete from Bucket
+            supabase.storage.from_('medical_documents').remove([storage_path])
+        
+        # 3. Delete from Database
+        supabase.table('saved_documents').delete().eq('id', doc_id).eq('user_id', request.user_id).execute()
+        return jsonify({"message": "Document deleted"})
+    except Exception as e:
+        return jsonify({"error": "Failed to delete"}), 500
+
+@app.route('/api/documents/file/<filename>', methods=['GET'])
+@check_token
+def serve_document(filename):
+    try:
+        # Instead of local folder, we download it directly from Supabase to RAM!
+        storage_path = f"{request.user_id}/{filename}"
+        file_data = supabase.storage.from_("medical_documents").download(storage_path)
+        
+        # Send the file data back to the browser
+        return Response(file_data, mimetype="application/pdf")
+    except Exception as e:
+        print("Serve Error:", e)
+        return jsonify({"error": "File not found in cloud"}), 404
 
 
 # --- ROUTE: AI CHAT (Conversations & Video Recommendations) ---
@@ -417,7 +508,43 @@ def chat_with_ai():
         print("Groq Error:", e)
         return jsonify({"reply": "I'm having trouble connecting to Model. Please check the backend."}), 500
 
+
+@app.route('/api/hackathon-extract', methods=['POST'])
+def hackathon_extract():
+    data = request.json
+    medical_text = data.get('text', '')
+    
+    if not medical_text:
+        return jsonify({"error": "No text provided"}), 400
+
+    # 1. Load data and create Vector Store for RAG
+    doc = Document(text=medical_text)
+    index = VectorStoreIndex.from_documents([doc])
+    
+    # 2. Query the data enforcing our schema
+    query_engine = index.as_query_engine(output_cls=FacilityData)
+    prompt = "Read the facility report and extract the medical data. Leave empty if not mentioned."
+    response = query_engine.query(prompt)
+    
+    # 3. Format as standard JSON
+    extracted_json = json.loads(response.response.model_dump_json())
+    
+    return jsonify({
+        "status": "success", 
+        "data": extracted_json
+    }), 200
+
+
+
+
+
+
+
+
+
+
 if __name__ == '__main__':
     print("Starting CareCompanion server with WebSockets...")
     # 5. IMPORTANT: Use socketio.run instead of app.run!
     socketio.run(app, debug=True, port=5000)
+
