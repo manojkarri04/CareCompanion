@@ -31,8 +31,9 @@ useEffect(() => {
     fetch(`${import.meta.env.VITE_API_URL}/api/alerts`,{
       headers: { 'Authorization': `Bearer ${session?.access_token}` }
     })
-      .then((response) => response.json())
-      .then((data) => {
+
+    .then((response) => response.json())
+    .then((data) => {
         const realAlerts = data.map((alert: any) => ({
           ...alert,
           id: String(alert.id)
@@ -58,15 +59,21 @@ useEffect(() => {
           body: JSON.stringify(newAlert),
         });
 
-        if (response.ok) {
+        if (response.ok)
+        {
           const savedAlert = await response.json();
           savedAlert.id = String(savedAlert.id);
-          
-          setAlerts([savedAlert, ...alerts]);
-          setNewAlert({ medicationName: '', time: '', date: '' });
+          setAlerts([savedAlert,...alerts]);
+          setNewAlert({
+            medicationName: '',
+            time: '',
+            date: '' 
+          });
           setShowAddModal(false);
         }
-      } catch (error) {
+      }
+      catch (error)
+      {
         console.log("Error saving alert:", error);
       }
     }
@@ -81,11 +88,14 @@ useEffect(() => {
         headers: { 'Authorization': `Bearer ${session?.access_token}`}
       });
 
-      if (response.ok) {
+      if (response.ok)
+      {
         setAlerts(alerts.filter((alert) => alert.id !== id));
       }
-    } catch (error) {
-      console.log("Error deleting alert:", error);
+    }
+    catch (error)
+    {
+       console.log("Error deleting alert:", error);
     }
   };
 

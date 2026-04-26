@@ -5,13 +5,17 @@ import { supabase } from './supabase';
 import { io } from 'socket.io-client';
 const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:5000');
 
+import { Building } from 'lucide-react';
+
+
+
 interface Message {
   id: string;
   type: 'user' | 'bot';
   content: string;
   timestamp: Date;
   specialContent?: {
-    type: 'summary' | 'food' | 'videos' | 'hospitals';
+    type: 'summary' | 'food' | 'videos' | 'hospitals' | 'facilities';
     data: any;
   };
   fileAttached?: string;
@@ -32,6 +36,7 @@ interface Chat {
 interface ChatPageProps {
   isGuestMode?: boolean;
 }
+
 
 export default function ChatPage({isGuestMode = false}: ChatPageProps) {
   const [chats, setChats] = useState<Chat[]>([
@@ -54,7 +59,6 @@ export default function ChatPage({isGuestMode = false}: ChatPageProps) {
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   const currentChat = chats.find((chat) => chat.id === activeChat);
 
   useEffect(() => {
@@ -69,18 +73,14 @@ export default function ChatPage({isGuestMode = false}: ChatPageProps) {
 
     // 2. Listen for a special signal from Flask (we will call it 'report_ready')
     socket.on('report_ready', (data) => {
-      
       // 3. The WhatsApp trick: Is the user looking at another tab?
       if (document.hidden && Notification.permission === 'granted') {
         // Show the popup on their screen!
         new Notification('CareCompanion', {
           body: data.message || 'Your medical report summary is ready!',
         });
-        
         // Bonus: You can add sound later if you want!
       }
-      
-      // Note: Later, we will also add the message to the chat screen here.
     });
 
     // Clean up the listener when the user leaves the page
@@ -103,11 +103,11 @@ export default function ChatPage({isGuestMode = false}: ChatPageProps) {
         // 3. Stop the stopwatch
         const endTime = Date.now(); 
         const pingTime = endTime - startTime; // The time in milliseconds
-        
         return pingTime;
       }
       return -1;
-    } catch (error) {
+    } catch (error)
+    {
       // If the server is totally offline or the internet is down
       return -1; 
     }
@@ -248,20 +248,72 @@ export default function ChatPage({isGuestMode = false}: ChatPageProps) {
     }
   };
 
+const handleExtractFacility = async () => {
+    if (!inputMessage.trim() || !currentChat) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      type: 'user',
+      content: `🏥 Facility Report:\n${inputMessage}`,
+      timestamp: new Date(),
+    };
+
+    const updatedChat = {
+      ...currentChat,
+      messages: [...currentChat.messages, userMessage],
+      lastMessage: new Date(),
+    };
+
+    setChats(chats.map((chat) => (chat.id === activeChat ? updatedChat : chat)));
+    const textToSend = inputMessage;
+    setInputMessage('');
+    setIsTyping(true);
+
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/hackathon-extract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: textToSend }),
+      });
+
+      const data = await response.json();
+
+      const botResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        type: 'bot',
+        content: "Facility data extracted successfully:",
+        timestamp: new Date(),
+        specialContent: {
+          type: 'facilities',
+          data: data.data,
+        },
+      };
+
+      setChats((prevChats) => prevChats.map((chat) => 
+        chat.id === activeChat ? { ...updatedChat, messages: [...updatedChat.messages, botResponse] } : chat
+      ));
+    } catch (error) {
+      alert("Failed to extract facility data.");
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+
   const handleFileUpload = () => {
     fileInputRef.current?.click();
   };
+  
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
+
     if (files && files.length > 0 && currentChat) {
       const pingMs = await checkNetworkSpeed();
-      if (pingMs === -1) 
-      {
+      if (pingMs === -1) {
          alert("You are offline! Cannot connect to the server.");
          return; // Stop the upload
-      } 
-      else if (pingMs > 1000) {
+      } else if (pingMs > 1000) {
         // If it takes more than 1000ms (1 full second) for a tiny ping, 
         // the network is very slow.
         const userWantsToContinue = window.confirm(
@@ -271,6 +323,7 @@ export default function ChatPage({isGuestMode = false}: ChatPageProps) {
           return; // Stop the upload
         }
       }
+      
       const file = files[0];
       const fileName = file.name;
 
@@ -420,6 +473,36 @@ export default function ChatPage({isGuestMode = false}: ChatPageProps) {
             ))}
           </div>
         );
+
+      case 'facilities':
+        return (
+          <div className="mt-3 bg-teal-50 border border-teal-200 rounded-lg p-4">
+            <h3 className="text-teal-900 font-bold mb-2">NGO: {specialContent.data.ngos?.join(', ') || 'N/A'}</h3>
+            <p className="text-teal-800"><strong>Facilities:</strong> {specialContent.data.facilities?.join(', ')}</p>
+            <p className="text-teal-800"><strong>Type:</strong> {specialContent.data.facilityTypeId} ({specialContent.data.operatorTypeId})</p>
+            <p className="text-teal-800"><strong>Capacity:</strong> {specialContent.data.capacity || 'Unknown'} beds</p>
+            
+            {specialContent.data.specialties?.length > 0 && (
+              <div className="mt-2">
+                <strong className="text-teal-900">Specialties:</strong>
+                <ul className="list-disc pl-5 text-teal-800">
+                  {specialContent.data.specialties.map((s: string, i: number) => <li key={i}>{s}</li>)}
+                </ul>
+              </div>
+            )}
+            
+            {specialContent.data.equipment?.length > 0 && (
+              <div className="mt-2">
+                <strong className="text-teal-900">Equipment:</strong>
+                <ul className="list-disc pl-5 text-teal-800">
+                  {specialContent.data.equipment.map((e: string, i: number) => <li key={i}>{e}</li>)}
+                </ul>
+              </div>
+            )}
+          </div>
+        );
+      
+
       default:
         return null;
     }
@@ -521,6 +604,13 @@ export default function ChatPage({isGuestMode = false}: ChatPageProps) {
               title="Upload Report File"
             >
               <Paperclip className="size-6 text-gray-600" />
+            </button>
+            <button
+              onClick={handleExtractFacility}
+              className="p-3 hover:bg-teal-50 rounded-lg transition-colors text-teal-600"
+              title="Extract Facility Data (NGO)"
+            >
+              <Building className="size-6" />
             </button>
             <input
               ref={fileInputRef}
