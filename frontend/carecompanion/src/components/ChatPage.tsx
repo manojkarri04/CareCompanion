@@ -64,30 +64,64 @@ export default function ChatPage({isGuestMode = false}: ChatPageProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentChat?.messages]);
-   
-  useEffect(() => {
-    // 1. Ask the user if we can show popups when the page loads
+  
+
+
+useEffect(() => {
     if (Notification.permission === 'default') {
       Notification.requestPermission();
     }
 
-    // 2. Listen for a special signal from Flask (we will call it 'report_ready')
-    socket.on('report_ready', (data) => {
-      // 3. The WhatsApp trick: Is the user looking at another tab?
+    // This handles the background analysis finishing!
+    const handleReportReady = (data: any) => {
+      // 1. Show Desktop Notification
       if (document.hidden && Notification.permission === 'granted') {
-        // Show the popup on their screen!
         new Notification('CareCompanion', {
-          body: data.message || 'Your medical report summary is ready!',
+          body: 'Your medical report summary is ready!',
         });
-        // Bonus: You can add sound later if you want!
       }
-    });
 
-    // Clean up the listener when the user leaves the page
-    return () => {
-      socket.off('report_ready');
+      // 2. Safely parse the analysis text
+      const lines = data.analysis ? data.analysis.split('\n').filter((line: string) => line.trim() !== '') : [];
+      const title = lines.length > 0 ? lines[0].replace(/[*#]/g, '') : "Health Report Summary";
+      const items = lines.length > 1 ? lines.slice(1).map((line: string) => line.replace(/^[-*•]\s*/, '')) : [data.analysis];
+
+      const summaryData = {
+        title: title,
+        items: items.length > 0 ? items : [data.analysis]
+      };
+
+      // 3. Inject the summary into the active chat
+      setChats((prevChats) => prevChats.map((chat) => {
+        if (chat.id === activeChat) {
+          const botResponse: Message = {
+            id: Date.now().toString(),
+            type: 'bot',
+            content: `I've analyzed your medical report in the background. Here's what I found:`,
+            timestamp: new Date(),
+            specialContent: {
+              type: 'summary',
+              data: summaryData,
+            },
+          };
+          return { ...chat, messages: [...chat.messages, botResponse] };
+        }
+        return chat;
+      }));
     };
-  }, []); // The empty brackets mean this setup only runs once
+
+    socket.on('report_ready', handleReportReady);
+
+    return () => {
+      socket.off('report_ready', handleReportReady);
+    };
+  }, [activeChat]); // <-- Added activeChat so it updates the correct conversation
+
+
+
+
+
+
 
 
 // The Connection Doctor
@@ -270,7 +304,7 @@ const handleExtractFacility = async () => {
     setIsTyping(true);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/hackathon-extract`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/langgraph-extract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: textToSend }),
@@ -303,6 +337,14 @@ const handleExtractFacility = async () => {
   const handleFileUpload = () => {
     fileInputRef.current?.click();
   };
+  
+
+
+
+
+
+
+
   
 
 const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -354,7 +396,7 @@ const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const formData = new FormData();
       formData.append('file', file);
 
-      try {
+        try {
         const { data: { session } } = await supabase.auth.getSession();
         const response = await fetch(`${import.meta.env.VITE_API_URL}/api/analyze`, {
           method: 'POST',
@@ -366,55 +408,29 @@ const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
 
         const data = await response.json();
 
-        if (response.ok) {
-          const lines = data.analysis.split('\n').filter((line: string) => line.trim() !== '');
-          const title = lines[0].replace(/[*#]/g, '');
-          const items = lines.slice(1).map((line: string) => line.replace(/^[-*•]\s*/, ''));
-
-          const summaryData = {
-            title: title || "Health Report Summary",
-            items: items.length > 0 ? items : [data.analysis]
-          };
-
+        // Check if Flask accepted it for background processing (202 or 200)
+        if (response.ok || response.status === 202) {
           const botResponse: Message = {
             id: (Date.now() + 1).toString(),
             type: 'bot',
-            content: `I've analyzed your medical report using Llama 3.1. Here's what I found:`,
-            timestamp: new Date(),
-            specialContent: {
-              type: 'summary',
-              data: summaryData,
-            },
+            content: data.message || "File uploaded securely! My AI is analyzing it in the background. I will notify you when the summary is ready.",
+            timestamp: new Date()
           };
 
-          const chatWithBotResponse = {
-            ...updatedChat,
-            messages: [...updatedChat.messages, botResponse],
-          };
-          setChats(chats.map((chat) => (chat.id === activeChat ? chatWithBotResponse : chat)));
-
-          setTimeout(() => {
-            const followUpMessage: Message = {
-              id: (Date.now() + 2).toString(),
-              type: 'bot',
-              content: 'Would you like me to:\n• Show relevant educational videos about your condition\n• Find specialized hospitals nearby\n• Provide dietary recommendations\n\nJust ask me!',
-              timestamp: new Date(),
-            };
-            setChats((prevChats) => prevChats.map((chat) => 
-              chat.id === activeChat 
-                ? { ...chatWithBotResponse, messages: [...chatWithBotResponse.messages, followUpMessage] } 
-                : chat
-            ));
-          }, 1500);
+          setChats(chats.map((chat) => 
+            chat.id === activeChat 
+              ? { ...updatedChat, messages: [...updatedChat.messages, botResponse] } 
+              : chat
+          ));
 
         } else {
-          alert("Error analyzing report: " + data.error);
+          alert("Error analyzing report: " + (data.error || "Unknown error"));
         }
       } catch (error) {
         alert("Could not connect to the server.");
       } finally {
         setIsTyping(false);
-      }
+      
     }
   };
 
@@ -474,34 +490,69 @@ const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
           </div>
         );
 
-      case 'facilities':
+     
+
+case 'facilities':
+        const facilityData = specialContent.data;
         return (
-          <div className="mt-3 bg-teal-50 border border-teal-200 rounded-lg p-4">
-            <h3 className="text-teal-900 font-bold mb-2">NGO: {specialContent.data.ngos?.join(', ') || 'N/A'}</h3>
-            <p className="text-teal-800"><strong>Facilities:</strong> {specialContent.data.facilities?.join(', ')}</p>
-            <p className="text-teal-800"><strong>Type:</strong> {specialContent.data.facilityTypeId} ({specialContent.data.operatorTypeId})</p>
-            <p className="text-teal-800"><strong>Capacity:</strong> {specialContent.data.capacity || 'Unknown'} beds</p>
+          <div className="mt-3 bg-teal-50 border border-teal-200 rounded-lg p-4 shadow-sm">
+            <h3 className="text-teal-900 text-lg font-bold border-b border-teal-200 pb-2 mb-2">
+              {facilityData.ngos?.length > 0 ? facilityData.ngos.join(', ') : 'Organization Details'}
+            </h3>
             
-            {specialContent.data.specialties?.length > 0 && (
-              <div className="mt-2">
-                <strong className="text-teal-900">Specialties:</strong>
-                <ul className="list-disc pl-5 text-teal-800">
-                  {specialContent.data.specialties.map((s: string, i: number) => <li key={i}>{s}</li>)}
+            {facilityData.facilities?.length > 0 && (
+              <p className="text-teal-800 mb-1"><strong>Facility:</strong> {facilityData.facilities.join(', ')}</p>
+            )}
+            <p className="text-teal-800 mb-1">
+              <strong>Type:</strong> {facilityData.facilityTypeId || 'Unknown'} 
+              {facilityData.operatorTypeId ? ` (${facilityData.operatorTypeId})` : ''}
+            </p>
+            {facilityData.capacity && (
+              <p className="text-teal-800 mb-2"><strong>Capacity:</strong> {facilityData.capacity} beds</p>
+            )}
+
+            {facilityData.specialties?.length > 0 && (
+              <div className="mt-3">
+                <strong className="text-teal-900 block mb-1">Specialties:</strong>
+                <div className="flex flex-wrap gap-1">
+                  {facilityData.specialties.map((s: string, i: number) => (
+                    <span key={i} className="bg-teal-200 text-teal-900 text-xs px-2 py-1 rounded-full font-medium">
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {facilityData.capability?.length > 0 && (
+              <div className="mt-3">
+                <strong className="text-teal-900">Capabilities:</strong>
+                <ul className="list-disc pl-5 text-teal-800 text-sm mt-1 space-y-1">
+                  {facilityData.capability.map((c: string, i: number) => <li key={i}>{c}</li>)}
                 </ul>
               </div>
             )}
-            
-            {specialContent.data.equipment?.length > 0 && (
-              <div className="mt-2">
+
+            {facilityData.equipment?.length > 0 && (
+              <div className="mt-3">
                 <strong className="text-teal-900">Equipment:</strong>
-                <ul className="list-disc pl-5 text-teal-800">
-                  {specialContent.data.equipment.map((e: string, i: number) => <li key={i}>{e}</li>)}
+                <ul className="list-disc pl-5 text-teal-800 text-sm mt-1 space-y-1">
+                  {facilityData.equipment.map((e: string, i: number) => <li key={i}>{e}</li>)}
+                </ul>
+              </div>
+            )}
+
+            {facilityData.procedure?.length > 0 && (
+              <div className="mt-3">
+                <strong className="text-teal-900">Procedures:</strong>
+                <ul className="list-disc pl-5 text-teal-800 text-sm mt-1 space-y-1">
+                  {facilityData.procedure.map((p: string, i: number) => <li key={i}>{p}</li>)}
                 </ul>
               </div>
             )}
           </div>
         );
-      
+
 
       default:
         return null;
