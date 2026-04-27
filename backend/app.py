@@ -11,7 +11,7 @@ from flask_cors import CORS
 from datetime import datetime, timezone
 from flask_socketio import SocketIO
 from dotenv import load_dotenv
-from functools import wraps
+
 from data_structures.linear.sorter import AppointmentSorter
 from supabase import create_client, Client
 from flask import Response # We will need this later for downloading
@@ -20,29 +20,113 @@ from groq import Groq
 
 
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Literal, Optional
 from llama_index.core import Document, VectorStoreIndex, Settings
 from llama_index.llms.groq import Groq as LlamaGroq
 
-# Virtue Foundation Hackathon Schema
+
+
+
+from typing import TypedDict, List
+from langgraph.graph import StateGraph, END
+from langchain_groq import ChatGroq
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
+
+# 1. Define the State (The memory passed between the agent's nodes)
+class AgentState(TypedDict):
+    medical_text: str
+    reasoning_log: List[str]
+    final_data: dict
+
+# Initialize Groq for LangChain
+llm = ChatGroq(temperature=0, model_name="llama-3.1-8b-instant", groq_api_key=os.environ.get("GROQ_API_KEY"))
+json_parser = JsonOutputParser()
+
+# 2. Node 1: The Extractor
+def extract_medical_data(state: AgentState):
+    state["reasoning_log"].append("Step 1: Extracting raw medical data using Virtue Foundation schema.")
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", """You are a medical IDP agent. Extract facts ONLY about the facilities mentioned.
+        Return ONLY a JSON object with these keys: ngos (list), facilities (list), facilityTypeId (string), 
+        operatorTypeId (string), capacity (int), procedure (list), equipment (list), capability (list), specialties (list)."""),
+        ("user", "{text}")
+    ])
+    
+    chain = prompt | llm | json_parser
+    extracted_json = chain.invoke({"text": state["medical_text"]})
+    
+    state["final_data"] = extracted_json
+    return state
+
+# 3. Node 2: The Verifier (Self-Correction)
+def verify_data(state: AgentState):
+    state["reasoning_log"].append("Step 2: Verifying data against strict hackathon rules.")
+    data = state["final_data"]
+    
+    # Rule 1: Equipment should not contain bed counts
+    if data.get("equipment"):
+        clean_equipment = [item for item in data["equipment"] if "bed" not in item.lower()]
+        if len(clean_equipment) != len(data["equipment"]):
+             state["reasoning_log"].append("Correction: Removed bed counts from equipment list.")
+        data["equipment"] = clean_equipment
+        
+    # Rule 2: Ensure capacity is an integer
+    if data.get("capacity"):
+        try:
+            data["capacity"] = int(data["capacity"])
+        except ValueError:
+            state["reasoning_log"].append("Correction: Invalid capacity format removed.")
+            data["capacity"] = None
+            
+    state["final_data"] = data
+    return state
+
+
+# 4. Compile the LangGraph
+workflow = StateGraph(AgentState)
+workflow.add_node("extractor", extract_medical_data)
+workflow.add_node("verifier", verify_data)
+
+workflow.set_entry_point("extractor")
+workflow.add_edge("extractor", "verifier")
+workflow.add_edge("verifier", END)
+
+medical_agent_app = workflow.compile()
+
+
+
+
+
+# --- OFFICIAL HACKATHON UNIFIED SCHEMA ---
 class FacilityData(BaseModel):
-    ngos: List[str] = Field(description="NGO names present in the text")
-    facilities: List[str] = Field(description="Healthcare facility names present in the text")
-    facilityTypeId: Optional[str] = Field(description="hospital, pharmacy, doctor, clinic, dentist")
-    operatorTypeId: Optional[str] = Field(description="public or private")
-    specialties: List[str] = Field(description="Exact matches only: internalMedicine, pediatrics, cardiology, generalSurgery, etc.")
-    procedure: List[str] = Field(description="Specific clinical services performed")
-    equipment: List[str] = Field(description="Physical medical devices, imaging machines, infrastructure")
-    capacity: Optional[int] = Field(description="Overall inpatient bed capacity")
+    # From organization_extraction.py
+    ngos: Optional[List[str]] = Field(default_factory=list, description="NGO names present in the text. An NGO is any non-profit organization that delivers tangible, on-the-ground healthcare services.")
+    facilities: Optional[List[str]] = Field(default_factory=list, description="Healthcare facility names present in the text. Must be a physical site currently operating.")
+    
+    # From facility_and_ngo_fields.py
+    facilityTypeId: Optional[Literal["hospital", "pharmacy", "doctor", "clinic", "dentist"]] = Field(None, description="type of facility (only one of these values)")
+    operatorTypeId: Optional[Literal["public", "private"]] = Field(None, description="Indicates if the facility is privately or publicly operated")
+    capacity: Optional[int] = Field(None, description="Overall inpatient bed capacity of the facility")
+
+    # From free_form.py
+    procedure: Optional[List[str]] = Field(default_factory=list, description="Specific clinical services performed at the facility—medical/surgical interventions and diagnostic procedures stated in plain language.")
+    equipment: Optional[List[str]] = Field(default_factory=list, description="Physical medical devices and infrastructure (MRI/CT/X-ray). Include specific models. Do NOT list bed counts here.")
+    capability: Optional[List[str]] = Field(default_factory=list, description="Medical capabilities defining what level and types of clinical care the facility can deliver (e.g., Level II trauma center, ICU).")
+
+    # From medical_specialties.py
+    specialties: Optional[List[str]] = Field(default_factory=list, description="Exact case-sensitive matches from the specialty hierarchy (e.g., internalMedicine, pediatrics, cardiology, generalSurgery).")
+
 
 # Hook up LlamaIndex to your existing Groq model
 Settings.llm = LlamaGroq(model="llama-3.1-8b-instant", api_key=os.environ.get("GROQ_API_KEY"))
 
+# --- ADD THIS LINE TO FIX THE ERROR ---
+# This tells LlamaIndex to process embeddings locally for free instead of asking OpenAI
+Settings.embed_model = "local"
 
-
-my_sorter = AppointmentSorter() 
-
-
+my_sorter = AppointmentSorter()
 # This tells Python to open your .env file and load the keys!
 load_dotenv()
 # --- SUPABASE CLOUD CONNECTION ---
@@ -253,7 +337,7 @@ def manage_notes():
 
         response = supabase.table('notes').insert({
             'user_id': request.user_id,
-            'content': data.get("content"),
+            'content': incoming_data.get("content"),
             'created_at': current_time,
             'updated_at': current_time
         }).execute()
@@ -346,7 +430,7 @@ def background_ai_task(filename, extracted_text):
 
 # --- THE MAIN DOCTOR (Main Server Route) ---
 @app.route('/api/analyze', methods=['POST'])
-# @check_token # Security Check: Only logged-in users can upload!
+@check_token # Security Check: Only logged-in users can upload!
 def analyze_report():
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
@@ -406,6 +490,8 @@ def analyze_report():
         print("Upload Error:", e)
         return jsonify({"error": "Could not process the file."}), 500
    
+
+@app.route('/api/documents', methods=['GET'])
 @check_token # We add our security guard here so only logged-in users can fetch!
 def get_documents():
     try:
@@ -508,7 +594,6 @@ def chat_with_ai():
         print("Groq Error:", e)
         return jsonify({"reply": "I'm having trouble connecting to Model. Please check the backend."}), 500
 
-
 @app.route('/api/hackathon-extract', methods=['POST'])
 def hackathon_extract():
     data = request.json
@@ -517,22 +602,71 @@ def hackathon_extract():
     if not medical_text:
         return jsonify({"error": "No text provided"}), 400
 
-    # 1. Load data and create Vector Store for RAG
-    doc = Document(text=medical_text)
-    index = VectorStoreIndex.from_documents([doc])
+    try:
+        # 1. Load data and create Vector Store for RAG
+        doc = Document(text=medical_text)
+        index = VectorStoreIndex.from_documents([doc])
+        
+        # 2. Query the data enforcing our schema
+        query_engine = index.as_query_engine(output_cls=FacilityData)
+        
+        # 3. The Official Master Prompt
+        prompt = """
+        You are a specialized medical facility information extractor for the Virtue Foundation.
+        Analyze the following text to extract structured facts about healthcare facilities and NGOs.
+        
+        CRITICAL RULES:
+        1. ngos & facilities: ONLY extract organizations explicitly mentioned by NAME. Use unabbreviated forms.
+        2. equipment: Do NOT list bed counts here; only list specific bed devices/models or infrastructure like "MRI".
+        3. capability: Extract Trauma/emergency care levels, Specialized medical units (ICU, NICU), and Accreditations.
+        4. specialties: Use exact camelCase terminology based on context (e.g., "Surgery" -> generalSurgery, "Pediatric" -> pediatrics, "Eye" -> ophthalmology, "Pathology/Laboratory" -> pathology).
+        5. Use clear, declarative statements in plain English for procedures and equipment. Include specific quantities when available.
+        6. If a value cannot be directly mapped or is not explicitly stated, omit it or leave the array empty.
+        
+        Extract the structured JSON from this report.
+        """
+        
+        response = query_engine.query(prompt)
+        
+        # 4. Format as standard JSON
+        extracted_json = json.loads(response.response.model_dump_json())
+        
+        return jsonify({
+            "status": "success", 
+            "data": extracted_json
+        }), 200
+        
+    except Exception as e:
+        print(f"Hackathon Agent Error: {e}")
+        return jsonify({"error": "Agent failed to process document"}), 500
+
+
+
+@app.route('/api/langgraph-extract', methods=['POST'])
+def run_langgraph_agent():
+    data = request.json
+    medical_text = data.get('text', '')
     
-    # 2. Query the data enforcing our schema
-    query_engine = index.as_query_engine(output_cls=FacilityData)
-    prompt = "Read the facility report and extract the medical data. Leave empty if not mentioned."
-    response = query_engine.query(prompt)
+    if not medical_text:
+        return jsonify({"error": "No text provided"}), 400
+
+    # Initialize the starting state
+    initial_state = {
+        "medical_text": medical_text,
+        "reasoning_log": ["Agent Initialized. Starting analysis..."],
+        "final_data": {}
+    }
     
-    # 3. Format as standard JSON
-    extracted_json = json.loads(response.response.model_dump_json())
+    # Run the graph!
+    result = medical_agent_app.invoke(initial_state)
     
     return jsonify({
-        "status": "success", 
-        "data": extracted_json
+        "status": "success",
+        "agent_log": result["reasoning_log"],
+        "data": result["final_data"]
     }), 200
+
+
 
 
 
