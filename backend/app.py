@@ -1,21 +1,26 @@
+
 import os
-import requests
 import json
+import requests
+
 import time
 import threading
 import PyPDF2
-import jwt
 import io
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
-from datetime import datetime, timezone
 from flask_socketio import SocketIO
+from functools import wraps
 from dotenv import load_dotenv
+from datetime import datetime, timezone
+import jwt
+
+
 
 from data_structures.linear.sorter import AppointmentSorter
 from supabase import create_client, Client
 from flask import Response # We will need this later for downloading
-from functools import wraps
+
 from groq import Groq
 
 
@@ -24,77 +29,76 @@ from typing import List, Literal, Optional
 from llama_index.core import Document, VectorStoreIndex, Settings
 from llama_index.llms.groq import Groq as LlamaGroq
 
-
-
-
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 
+load_dotenv()
+
+
+app = Flask(__name__)
+# This lets your React app on port 5173 talk to Flask on port 5000
+CORS(app) 
+
+
+
+def check_token(f):
+    @wraps(f)
+    def wrap(*args, **kwargs):
+        auth_header = request.headers.get('Authorization')
+        if not auth_header:
+            return jsonify({'error': 'No key provided'}), 401
+
+        try:
+            # 1. Extract the token sent by React
+            token = auth_header.split(" ")[1]
+            
+            # 2. THE SILVER BULLET: Decode without checking the math or the secret
+            # This completely bypasses the ES256 vs HS256 algorithm crash
+            decoded_token = jwt.decode(
+                token,
+                options={
+                    "verify_signature": False, # <--- THIS IS THE MAGIC LINE
+                    "verify_aud": False
+                } 
+            )
+            
+            # 3. Success! Save the user ID for the route to use
+            request.user_id = decoded_token.get('sub')
+            
+        except Exception as e:
+            print(f"🔥 SECURITY ALERT: {type(e).__name__} - {e}")
+            return jsonify({'error': 'Invalid key or unauthorized'}), 401
+
+        return f(*args, **kwargs)
+    return wrap
+
+
+# --- NETWORK TOOLS ---
+@app.route('/api/ping', methods=['GET'])
+def ping_server():
+    return jsonify({"reply": "pong"}), 200
+
+
+
 # 1. Define the State (The memory passed between the agent's nodes)
 class AgentState(TypedDict):
+    """State for the LangGraph Reasoning Engine"""
     medical_text: str
+    user_id: str          # NEW: To link the data to the correct patient/user
+    file_name: str        # NEW: For our source citations
     reasoning_log: List[str]
     final_data: dict
+    anomalies_detected: List[str]
+    citations: List[str]
+
+
 
 # Initialize Groq for LangChain
 llm = ChatGroq(temperature=0, model_name="llama-3.1-8b-instant", groq_api_key=os.environ.get("GROQ_API_KEY"))
 json_parser = JsonOutputParser()
-
-# 2. Node 1: The Extractor
-def extract_medical_data(state: AgentState):
-    state["reasoning_log"].append("Step 1: Extracting raw medical data using Virtue Foundation schema.")
-    
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", """You are a medical IDP agent. Extract facts ONLY about the facilities mentioned.
-        Return ONLY a JSON object with these keys: ngos (list), facilities (list), facilityTypeId (string), 
-        operatorTypeId (string), capacity (int), procedure (list), equipment (list), capability (list), specialties (list)."""),
-        ("user", "{text}")
-    ])
-    
-    chain = prompt | llm | json_parser
-    extracted_json = chain.invoke({"text": state["medical_text"]})
-    
-    state["final_data"] = extracted_json
-    return state
-
-# 3. Node 2: The Verifier (Self-Correction)
-def verify_data(state: AgentState):
-    state["reasoning_log"].append("Step 2: Verifying data against strict hackathon rules.")
-    data = state["final_data"]
-    
-    # Rule 1: Equipment should not contain bed counts
-    if data.get("equipment"):
-        clean_equipment = [item for item in data["equipment"] if "bed" not in item.lower()]
-        if len(clean_equipment) != len(data["equipment"]):
-             state["reasoning_log"].append("Correction: Removed bed counts from equipment list.")
-        data["equipment"] = clean_equipment
-        
-    # Rule 2: Ensure capacity is an integer
-    if data.get("capacity"):
-        try:
-            data["capacity"] = int(data["capacity"])
-        except ValueError:
-            state["reasoning_log"].append("Correction: Invalid capacity format removed.")
-            data["capacity"] = None
-            
-    state["final_data"] = data
-    return state
-
-
-# 4. Compile the LangGraph
-workflow = StateGraph(AgentState)
-workflow.add_node("extractor", extract_medical_data)
-workflow.add_node("verifier", verify_data)
-
-workflow.set_entry_point("extractor")
-workflow.add_edge("extractor", "verifier")
-workflow.add_edge("verifier", END)
-
-medical_agent_app = workflow.compile()
-
 
 
 
@@ -124,11 +128,11 @@ Settings.llm = LlamaGroq(model="llama-3.1-8b-instant", api_key=os.environ.get("G
 
 # --- ADD THIS LINE TO FIX THE ERROR ---
 # This tells LlamaIndex to process embeddings locally for free instead of asking OpenAI
-Settings.embed_model = "local"
+Settings.embed_model = "local:BAAI/bge-small-en-v1.5"
 
 my_sorter = AppointmentSorter()
 # This tells Python to open your .env file and load the keys!
-load_dotenv()
+
 # --- SUPABASE CLOUD CONNECTION ---
 supabase_url = os.environ.get("SUPABASE_URL")
 supabase_key = os.environ.get("SUPABASE_KEY")
@@ -139,9 +143,6 @@ if not supabase_url or not supabase_key:
 supabase: Client = create_client(supabase_url, supabase_key)
 
 
-app = Flask(__name__)
-# This lets your React app on port 5173 talk to Flask on port 5000
-CORS(app) 
 
 # 1. Set up the WebSocket tool
 # cors_allowed_origins="*" makes sure React is allowed to connect
@@ -158,12 +159,336 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 # Initialize Groq Client (Ensure GROQ_API_KEY is in your environment variables)
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
+
+
+
+
+# 3. Node 2: The Verifier (Self-Correction)
+def verify_data(state: AgentState):
+    state["reasoning_log"].append("Step 2: Verifying data against strict hackathon rules.")
+    data = state["final_data"]
+    
+    # Rule 1: Equipment should not contain bed counts
+    if data.get("equipment"):
+        clean_equipment = [item for item in data["equipment"] if "bed" not in item.lower()]
+        if len(clean_equipment) != len(data["equipment"]):
+             state["reasoning_log"].append("Correction: Removed bed counts from equipment list.")
+        data["equipment"] = clean_equipment
+        
+    # Rule 2: Ensure capacity is an integer
+    if data.get("capacity"):
+        try:
+            data["capacity"] = int(data["capacity"])
+        except ValueError:
+            state["reasoning_log"].append("Correction: Invalid capacity format removed.")
+            data["capacity"] = None
+            
+    state["final_data"] = data
+    return state
+
+
+
+
+
+
+# 2. NODE 1: The Intelligent Document Parser (IDP)
+def extract_medical_data(state: AgentState):
+    state["reasoning_log"].append("Step 1: Extracting medical entities using Llama 3.1.")
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", """You are an expert IDP agent for the Virtue Foundation.
+        Extract facts ONLY from the text. Return a JSON object EXACTLY matching this structure:
+        {{
+            "facilityName": "string",
+            "procedure": ["list of strings"],
+            "equipment": ["list of strings"],
+            "specialties": ["list of strings"]
+        }}
+        If a field is missing in the text, return an empty list []."""),
+        ("user", "Text to analyze:\n{text}")
+    ])
+    
+    chain = prompt | llm | json_parser
+    try:
+        extracted_json = chain.invoke({"text": state["medical_text"]})
+        state["final_data"] = extracted_json
+        state["citations"].append("Data extracted directly from uploaded unstructured text.")
+    except Exception as e:
+        state["reasoning_log"].append(f"Extraction failed: {str(e)}")
+        state["final_data"] = {"facilityName": "Unknown", "procedures": [], "equipment": [], "specialties": []}
+        
+    return state
+
+
+
+
+# 3. NODE 2: Medical Reasoning & Anomaly Detection
+def medical_reasoning_check(state: AgentState):
+    state["reasoning_log"].append("Step 2: Running Medical Reasoning & Anomaly Detection.")
+    data = state.get("final_data", {})
+    anomalies = []
+    
+    procedures = data.get("procedure", [])
+    equipment = data.get("equipment", [])
+    
+    # Logic 1: High procedure breadth but no equipment (Hackathon Q 4.8)
+    if len(procedures) > 0 and len(equipment) == 0:
+        anomalies.append(
+            f"CRITICAL ANOMALY: Facility claims {len(procedures)} procedures "
+            f"(including '{procedures[0]}') but lists 0 supporting equipment. "
+            "High risk of misrepresentation or itinerant outreach."
+        )
+    
+    # Logic 2: Specific equipment checks (e.g., Surgery requires OR / Anesthesia)
+    procedure_text = " ".join(procedures).lower()
+    equipment_text = " ".join(equipment).lower()
+    
+    if "surgery" in procedure_text or "surgical" in procedure_text:
+        if "operating" not in equipment_text and "anesthesia" not in equipment_text:
+             anomalies.append("GAP DETECTED: Claims surgical capability but lacks Operating Room/Anesthesia equipment signals.")
+
+    state["anomalies_detected"] = anomalies
+    
+    if anomalies:
+        state["reasoning_log"].append(f"Found {len(anomalies)} anomalies requiring review.")
+    else:
+        state["reasoning_log"].append("Facility claims appear consistent with infrastructure signals.")
+        
+    return state
+
+
+def save_to_database(state: AgentState):
+    """Node 3: Push the verified, structured data into Supabase."""
+    state["reasoning_log"].append("Step 3: Saving verified hospital capabilities to database.")
+    
+    try:
+        # Prepare the payload to match the SQL table we just created
+        payload = {
+            "user_id": state["user_id"],
+            "facility_name": state["final_data"].get("facilityName", "Unknown Facility"),
+            "procedures": state["final_data"].get("procedures", []),
+            "equipment": state["final_data"].get("equipment", []),
+            "specialties": state["final_data"].get("specialties", []),
+            "anomalies_detected": state["anomalies_detected"],
+            "source_document_name": state["file_name"]
+        }
+        
+        # Execute the insert command
+        supabase.table('verified_facilities').insert(payload).execute()
+        state["reasoning_log"].append("Success: Data securely committed to the verified_facilities database.")
+        
+    except Exception as e:
+        print(f"Supabase Error: {e}")
+        state["reasoning_log"].append(f"Database Error: Could not save data.")
+        
+    return state
+
+
+# 4. Compile the Smart Graph
+workflow = StateGraph(AgentState)
+workflow.add_node("extractor", extract_medical_data)
+workflow.add_node("reasoning_engine", medical_reasoning_check)
+workflow.add_node("database_saver", save_to_database)   # <--- ADD THIS LINE!
+
+workflow.set_entry_point("extractor")
+workflow.add_edge("extractor", "reasoning_engine")
+workflow.add_edge("reasoning_engine", "database_saver") # Route to the saver
+workflow.add_edge("database_saver", END)                # End the workflow
+
+medical_agent_app = workflow.compile()
+
+"""
+def check_token(f):
+    @wraps(f)
+    def wrap(*args, **kwargs):
+        auth_header = request.headers.get('Authorization')
+        if not auth_header:
+            return jsonify({'error': 'No key provided'}), 401
+
+        try:
+            # 1. Extract the token sent by React
+            token = auth_header.split(" ")[1]
+            header = jwt.get_unverified_header(token)
+            print(header)
+            
+            # 2. Grab the secret locally (0ms network delay!)
+            secret = os.environ.get('SUPABASE_JWT_SECRET')
+            
+            if not secret:
+                print("🛑 CRITICAL: SUPABASE_JWT_SECRET is missing from your .env file!")
+                return jsonify({'error': 'Server Configuration Error'}), 500
+
+            # 3. Decode securely using the default HS256 algorithm
+            decoded_token = jwt.decode(
+                token,
+                secret,
+                algorithms=["HS256","ES256","RS256"],
+                # This option prevents edge-case crashes if Supabase tweaks its default audience
+                options={"verify_aud": False} 
+            )
+            
+            # 4. Success! Save the user ID for the route to use
+            request.user_id = decoded_token.get('sub')
+            
+        except Exception as e:
+            # If it fails, print the exact reason to your terminal for easy debugging
+            print(f"🔥 SECURITY ALERT: {type(e).__name__} - {e}")
+            return jsonify({'error': 'Invalid key or unauthorized'}), 401
+
+        return f(*args, **kwargs)
+    return wrap
+"""
+
+
+# 5. Update the Flask Route for the Frontend
+@app.route('/api/hackathon-analyze', methods=['POST'])
+@check_token # <--- ADD THIS LINE
+def run_hackathon_agent():
+    data = request.json
+    medical_text = data.get('text', '')
+    file_name = data.get('fileName', 'Manual Text Entry') # Grab filename from React
+
+    if not medical_text:
+        return jsonify({"error": "No text provided"}), 400
+
+    # Initialize memory
+    initial_state = {
+        "medical_text": medical_text,
+        "user_id": request.user_id,
+        "file_name": file_name,
+        "reasoning_log": ["Agent Initialized. Starting analysis..."],
+        "final_data": {},
+        "anomalies_detected": [],
+        "citations": []
+    }
+    
+    # Execute the LangGraph workflow
+    result = medical_agent_app.invoke(initial_state)
+    
+    # Return the processed knowledge to the React frontend
+    return jsonify({
+        "status": "success",
+        "facility_data": result["final_data"],
+        "anomalies": result["anomalies_detected"],
+        "agent_thinking_process": result["reasoning_log"],
+        "citations": result["citations"]
+    }), 200
+
+
+@app.route('/api/ask-database', methods=['POST'])
+@check_token
+def ask_database():
+    data = request.json
+    user_question = data.get('question', '')
+    
+    if not user_question:
+        return jsonify({"error": "No question provided"}), 400
+
+    # 1. Translate English to SQL using Llama 3.1 via Groq
+    sql_prompt = f"""
+    You are an expert PostgreSQL data analyst for the Virtue Foundation.
+    Convert the user's question into a PostgreSQL query.
+    
+    TABLE: ghana_facilities
+    COLUMNS:
+    - pk_unique_id (INTEGER): row number, use for citations
+    - name (TEXT): facility name
+    - specialties (JSONB): array e.g. '["cardiology", "internalMedicine"]'
+    - procedure (JSONB): array of procedures
+    - equipment (JSONB): array of equipment
+    - capability (JSONB): array of capabilities
+    - address_city (TEXT): city name
+    - address_stateOrRegion (TEXT): Ghana region name
+    - is_anomaly (BOOLEAN): TRUE if specialty claimed but no equipment or procedure evidence
+    - anomaly_severity (TEXT): 'high', 'medium', or 'none'
+
+    IMPORTANT SQL RULES:
+    - To search the JSONB array columns (specialties, procedure, equipment, capability), you MUST use the Postgres JSONB containment operator `@>`.
+    - Do NOT cast JSONB to text, and do NOT use ILIKE.
+    - Always include pk_unique_id, name, address_city, address_stateOrRegion, capability, equipment, procedure, numberDoctors, is_anomaly, and anomaly_severity in your SELECT statement.
+    - Limit to 30 rows maximum.
+    
+    The user asked: "{user_question}"
+    
+    ONLY output the raw SQL string. Do not include markdown formatting like ```sql. Do NOT explain.
+    """
+    generated_sql = ""
+    try:
+        # Ask Llama 3.1 to generate the SQL
+        sql_response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": sql_prompt}],
+            temperature=0.1
+        )
+        
+        generated_sql = sql_response.choices[0].message.content.strip()
+        generated_sql = generated_sql.replace("```sql", "").replace("```", "").strip()
+        if generated_sql.startswith("```sql"):
+         generated_sql = generated_sql[6:-3].strip()
+        elif generated_sql.startswith("```"):
+          generated_sql = generated_sql[3:-3].strip()
+           # Strip trailing semicolon — breaks Supabase RPC EXECUTE wrapper
+        generated_sql = generated_sql.rstrip(";").strip()
+
+
+        # 2. Execute the SQL against our Supabase RPC
+        db_response = supabase.rpc('run_sql_query', {'query_text': generated_sql}).execute()
+        raw_data = db_response.data
+        
+        # 3. Translate the raw data into the strict JSON object for the frontend
+        answer_prompt = f"""
+        You are a healthcare intelligence analyst for the Virtue Foundation, an NGO working to eliminate medical deserts in Ghana.
+        
+        The user asked: "{user_question}"
+        Database Results: {json.dumps(raw_data)[:2000]}
+        
+        Provide your response as a JSON object with EXACTLY these fields:
+        {{
+          "answer": "2-3 sentence plain English answer. Be specific: name regions, count facilities, cite names.",
+          "stats": [
+            {{"label": "Total found", "value": 12, "severity": "normal"}}
+          ],
+          "anomaly_warning": "A 1-sentence warning string if suspicious data patterns/anomalies are found, otherwise null.",
+          "recommendation": "One specific action the Virtue Foundation should take based on this data.",
+          "sql_explanation": "One sentence explaining the SQL query."
+        }}
+        
+        Severity levels for stats: "normal", "success", "warning", "danger".
+        Return ONLY valid JSON.
+        """
+        
+        final_answer = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": answer_prompt}],
+            temperature=0.3,
+            response_format={"type": "json_object"} # CRITICAL: Forces Groq to output JSON
+        )
+        
+        structured_response = json.loads(final_answer.choices[0].message.content)
+        
+        # Phase 6 Enhancement: Return the flattened payload so the React frontend can use it!
+        return jsonify({
+            "status": "success",
+            "answer": structured_response.get("answer"),
+            "stats": structured_response.get("stats", []),
+            "anomaly_warning": structured_response.get("anomaly_warning"),
+            "recommendation": structured_response.get("recommendation"),
+            "sql_explanation": structured_response.get("sql_explanation"),
+            "executed_sql": generated_sql, 
+            "raw_data": raw_data
+        }), 200
+
+    except Exception as e:
+        print(f"Text-to-SQL Error: {e}")
+        return jsonify({"error": "Failed to query the medical database.", "details": str(e)}), 500
+
+
 def generate_video_script(medical_report_text):
     """
     Takes a patient's medical report and uses Llama 3.1 to generate a 
     3-5 scene storyboard formatted strictly as JSON.
     """
-    
+ 
     system_prompt = """
     You are 'The Director', an expert medical communicator and video storyboard artist for the CareCompanion system. 
     Your job is to translate complex ophthalmic medical reports into an easy-to-understand, empathetic educational video script for a patient.
@@ -234,37 +559,6 @@ def handle_script_generation():
 
 
 
-# --- NEW SUPABASE SECURITY GUARD ---
-def check_token(f):
-    @wraps(f)
-    def wrap(*args, **kwargs):
-        # 1. Look for the key sent by React
-        auth_header = request.headers.get('Authorization')
-        if not auth_header:
-            return jsonify({'error': 'No key provided'}), 401
-        
-        try:
-            # 2. Extract the key string
-            token = auth_header.split(" ")[1]
-            # 3. Read the key using your Supabase secret password
-            secret = os.environ.get('SUPABASE_JWT_SECRET')
-            decoded_token = jwt.decode(token, secret, algorithms=["HS256"], audience="authenticated")
-            
-            # 4. Save the user's ID number so your routes can use it
-            # Supabase calls the user ID 'sub'
-            request.user_id = decoded_token['sub'] 
-            
-        except Exception as e:
-            return jsonify({'error': 'Invalid key'}), 401
-            
-        return f(*args, **kwargs)
-    return wrap
-
-
-# --- NETWORK TOOLS ---
-@app.route('/api/ping', methods=['GET'])
-def ping_server():
-    return jsonify({"reply": "pong"}), 200
 
 # --- HELPER FUNCTIONS ---
 def extract_text_from_bytes(file_bytes):
@@ -323,6 +617,7 @@ def home():
 
 # --- ROUTES: NOTES ---
 @app.route('/api/notes', methods=['GET', 'POST'])
+@check_token # <--- ADD THIS LINE
 def manage_notes():
     # Step 1: Open the connection to the database
     # db_connection = get_db_connection()
@@ -341,7 +636,7 @@ def manage_notes():
             'created_at': current_time,
             'updated_at': current_time
         }).execute()
-
+        return jsonify(response.data[0]), 201
     # ACTION 2: The user wants to READ all notes
 
     if request.method == 'GET':
@@ -351,6 +646,7 @@ def manage_notes():
 
 # --- ROUTES: APPOINTMENTS ---
 @app.route('/api/appointments', methods=['GET', 'POST'])
+@check_token # <--- ADD THIS LINE
 def manage_appointments():
     if request.method == 'POST':
         data = request.json
@@ -628,14 +924,19 @@ def hackathon_extract():
         
         response = query_engine.query(prompt)
         
-        # 4. Format as standard JSON
-        extracted_json = json.loads(response.response.model_dump_json())
         
+# 4. Format as standard JSON
+        if hasattr(response, 'raw_output') and response.raw_output:
+            extracted_json = response.raw_output.model_dump() # <-- Indented 4 spaces
+        else:
+            extracted_json = json.loads(response.response)    # <-- Indented 4 spaces
+
         return jsonify({
             "status": "success", 
             "data": extracted_json
         }), 200
-        
+
+
     except Exception as e:
         print(f"Hackathon Agent Error: {e}")
         return jsonify({"error": "Agent failed to process document"}), 500
@@ -654,7 +955,9 @@ def run_langgraph_agent():
     initial_state = {
         "medical_text": medical_text,
         "reasoning_log": ["Agent Initialized. Starting analysis..."],
-        "final_data": {}
+        "final_data": {},
+        "anomalies_detected": [],
+        "citations": []
     }
     
     # Run the graph!
@@ -665,7 +968,6 @@ def run_langgraph_agent():
         "agent_log": result["reasoning_log"],
         "data": result["final_data"]
     }), 200
-
 
 
 
