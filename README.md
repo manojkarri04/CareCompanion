@@ -1,41 +1,53 @@
-# CareCompanion
-📖 CareCompanion AI
-🩺 Overview
-CareCompanion AI is a patient-focused health assistance and management system designed in Figma. The aim of the project is to educate patients and ensure they never miss an opportunity for recovery from any health issue they are suffering from.
+---
 
-It provides a user-friendly interface for patients to understand their medical condition, receive AI-assisted guidance, and access helpful resources in a simplified manner.
+# 🏥 CareCompanion
 
-🎯 Features
-📑 AI-Assisted Explanation of Medical Reports – helps patients understand complex medical terms in simple language.
+**An AI-Powered Patient Education and Healthcare Navigation Platform**
 
-🎥 YouTube Video Suggestions – recommends videos related to the patient’s health issue for better understanding.
+CareCompanion is a full-stack, patient-first platform designed to bridge the communication gap between complex medical data and patient understanding. By leveraging a hybrid Agentic/Explainable AI (XAI) RAG pipeline, the application empowers users to understand their medical conditions through simplified data extraction, while also providing smart routing to optimal care facilities based on their health status.
 
-💬 Chat Interface – patients can ask health-related queries and get instant AI responses.
+## ✨ Key Features
 
-🌍 Multi-language Support – provides explanations in multiple languages for better accessibility.
+* **AI-Powered Medical Jargon Translation:** Utilizes a hybrid Agentic/XAI Retrieval-Augmented Generation (RAG) pipeline to ingest complex clinical text and output patient-friendly educational insights.
+* **Dynamic Hospital Matching Algorithm:** Correlates a patient's specific health metrics and extracted diagnostic data with local facility capabilities to recommend the best care destinations.
+* **Secure Report Management:** Employs a HIPAA-conscious architecture for safe, robust medical report storage and user data management.
+* **🚧 Active Research (Roadmap):** Currently architecting a deep learning module for **Medical Image Analysis**. This upcoming feature will complement the existing text-based diagnostic pipeline by applying computer vision to medical scans.
 
-🏥 Nearby Hospital Suggestions – guides patients to hospitals/clinics based on their location.
+## 🛠️ Technical Stack
 
-🔍 AI Predictions – assists in predicting potential risks like diabetes, sugar level, and heart-related issues using extracted keywords.
+**Frontend (User Interface)**
 
-🛠️ Tech Stack
-🎨 Figma – for UI/UX design
+* **React & TypeScript:** For building a robust, highly responsive, and type-safe user interface.
+* **Tailwind CSS:** For seamless styling and an intuitive, modern user experience.
 
-💡 UI/UX Principles – focused on accessibility, minimalism, and patient-friendly workflows
+**Backend & Database**
 
-⚡ (Future Development) React, TailwindCSS, and AI integrations (ChatGPT API,googles medGemma open source model, YouTube Data API, Google Maps API)
+* **Flask (Python):** A scalable API backend handling heavy computational requests and routing.
+* **Supabase:** Backend-as-a-Service utilized for secure authentication and relational database management.
 
-🚀 Project Goals
-Simplify medical data for patients.
+**Artificial Intelligence & Machine Learning**
 
-Ensure no patient misses recovery opportunities due to lack of understanding.
+* **Llama 3.1 & LangChain:** Powers the core intelligent agent for text comprehension and generation.
+* **FAISS (Facebook AI Similarity Search):** Enables high-performance vector similarity search and retrieval within the RAG pipeline.
+* **Deep Learning (In Progress):** Researching custom convolutional architectures for future medical image integration.
 
-Provide a centralized platform combining AI-driven explanations, resources, and hospital guidance.
+## 🧠 Why I Built This
 
-📌 Status
-✅ UI/UX Design Completed in Figma
+I built CareCompanion to merge two of my core interests: **Full-Stack Engineering** and **Healthcare AI**.
 
-🔜 Development planned with React + flask + Tailwind + AI integrations
+Navigating healthcare can be overwhelming for patients due to dense medical terminology. This project serves as a practical application of how Artificial Intelligence—specifically Large Language Models and intelligent retrieval systems—can be engineered to solve real-world accessibility problems. It challenged me to not only build a fluid web application but also to design backend infrastructure capable of handling specialized AI workloads and secure document storage.
 
-🔗 [View Figma Design](https://www.figma.com/proto/Cs7FA6aYIkKrvkOGFkghyQ/Untitled?node-id=45-4&p=f&t=Ayuoe898gnzwMMtT-1&scaling=min-zoom&content-scaling=fixed&page-id=0%3A1&starting-point-node-id=45%3A4)
+## 👨‍💻 About the Developer
 
+**Manoj Karri**
+*Third-Year B.Tech IT Student @ IIEST, Shibpur*
+
+I am an aspiring Full-Stack Developer and AI Engineer passionate about building scalable applications and exploring the intersection of web technologies and machine learning. I enjoy diving deep into computer networking, algorithm design, and system architecture.
+
+**Highlights:**
+
+* **Problem Solving:** Solved over 200+ coding problems across various platforms.
+* **Academics:** GATE 2026 Qualified.
+* **Specialties:** React, Flask, LangChain, Compiler Design, and AI/ML algorithms.
+
+📫 **Let's Connect:** [karrimanoj30@gmail.com](mailto:karrimanoj30@gmail.com)
