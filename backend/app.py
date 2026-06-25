@@ -1,26 +1,20 @@
-
 import os
 import json
 import requests
-
 import time
 import threading
 import PyPDF2
 import io
+import jwt
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO
 from functools import wraps
 from dotenv import load_dotenv
 from datetime import datetime, timezone
-import jwt
-
-
-
 from data_structures.linear.sorter import AppointmentSorter
 from supabase import create_client, Client
 from flask import Response # We will need this later for downloading
-
 from groq import Groq
 
 
@@ -43,7 +37,6 @@ app = Flask(__name__)
 CORS(app) 
 
 
-
 def check_token(f):
     @wraps(f)
     def wrap(*args, **kwargs):
@@ -54,21 +47,33 @@ def check_token(f):
         try:
             # 1. Extract the token sent by React
             token = auth_header.split(" ")[1]
+            header = jwt.get_unverified_header(token)
+            print(header)
             
-            # 2. THE SILVER BULLET: Decode without checking the math or the secret
-            # This completely bypasses the ES256 vs HS256 algorithm crash
+            # 2. Grab the secret locally (0ms network delay!)
+            secret = os.environ.get('SUPABASE_JWT_SECRET')
+            
+            if not secret:
+                print("🛑 CRITICAL: SUPABASE_JWT_SECRET is missing from your .env file!")
+                return jsonify({'error': 'Server Configuration Error'}), 500
+
+            # 3. Decode securely using the default HS256 algorithm
             decoded_token = jwt.decode(
                 token,
+                secret,
+                algorithms=["HS256","ES256","RS256"],
+                # This option prevents edge-case crashes if Supabase tweaks its default audience
                 options={
-                    "verify_signature": False, # <--- THIS IS THE MAGIC LINE
-                    "verify_aud": False
-                } 
+                    "verify_aud": False,
+                    "verify_signature": True
+                    } 
             )
             
-            # 3. Success! Save the user ID for the route to use
+            # 4. Success! Save the user ID for the route to use
             request.user_id = decoded_token.get('sub')
             
         except Exception as e:
+            # If it fails, print the exact reason to your terminal for easy debugging
             print(f"🔥 SECURITY ALERT: {type(e).__name__} - {e}")
             return jsonify({'error': 'Invalid key or unauthorized'}), 401
 
@@ -297,47 +302,6 @@ workflow.add_edge("database_saver", END)                # End the workflow
 
 medical_agent_app = workflow.compile()
 
-"""
-def check_token(f):
-    @wraps(f)
-    def wrap(*args, **kwargs):
-        auth_header = request.headers.get('Authorization')
-        if not auth_header:
-            return jsonify({'error': 'No key provided'}), 401
-
-        try:
-            # 1. Extract the token sent by React
-            token = auth_header.split(" ")[1]
-            header = jwt.get_unverified_header(token)
-            print(header)
-            
-            # 2. Grab the secret locally (0ms network delay!)
-            secret = os.environ.get('SUPABASE_JWT_SECRET')
-            
-            if not secret:
-                print("🛑 CRITICAL: SUPABASE_JWT_SECRET is missing from your .env file!")
-                return jsonify({'error': 'Server Configuration Error'}), 500
-
-            # 3. Decode securely using the default HS256 algorithm
-            decoded_token = jwt.decode(
-                token,
-                secret,
-                algorithms=["HS256","ES256","RS256"],
-                # This option prevents edge-case crashes if Supabase tweaks its default audience
-                options={"verify_aud": False} 
-            )
-            
-            # 4. Success! Save the user ID for the route to use
-            request.user_id = decoded_token.get('sub')
-            
-        except Exception as e:
-            # If it fails, print the exact reason to your terminal for easy debugging
-            print(f"🔥 SECURITY ALERT: {type(e).__name__} - {e}")
-            return jsonify({'error': 'Invalid key or unauthorized'}), 401
-
-        return f(*args, **kwargs)
-    return wrap
-"""
 
 
 # 5. Update the Flask Route for the Frontend
