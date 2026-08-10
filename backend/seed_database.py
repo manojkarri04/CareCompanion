@@ -9,8 +9,8 @@ load_dotenv()
 
 # Setup Supabase client
 supabase_url = os.environ.get("SUPABASE_URL")
-supabase_key = os.environ.get("SUPABASE_KEY")
-supabase: Client = create_client(supabase_url, supabase_key)
+supabase_anon_key = os.environ.get("SUPABASE_ANON_KEY")
+supabase: Client = create_client(supabase_url, supabase_anon_key)
 
 # The high-risk specialties defined by the hackathon prompt
 HIGH_RISK_SPECIALTIES = [

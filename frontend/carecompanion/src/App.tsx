@@ -1,32 +1,48 @@
 import { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import LoginPage from './components/LoginPage';
-import HomePage from './components/HomePage';
-import ChatPage from './components/ChatPage';
-import AlertsPage from './components/AlertsPage';
-import NotepadPage from './components/NotepadPage';
-import AppointmentSchedulerPage from './components/AppointmentSchedulerPage';
-import SavedDocumentsPage from './components/SavedDocumentsPage';
+import LoginPage from './components/Auth/LoginPage';
+import HomePage from './components/home/HomePage';
+import ChatPage from './components/Chat_page/ChatPage';
+import AlertsPage from './components/alerts/AlertsPage';
+import NotepadPage from './components/Notepad/NotepadPage';
+import AppointmentSchedulerPage from './components/Appointment_Scheduler/AppointmentSchedulerPage';
+import SavedDocumentsPage from './components/Saved_documents/SavedDocumentsPage';
+import { AuthProvider, useAuth } from "./AuthProvider";
+import ProtectedRoute from './ProtectedRoute';
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  return (
+    <AuthProvider>
+      <Router>
+        <AppRoutes />
+      </Router>
+    </AuthProvider>
+  );
+}
+
+function AppRoutes() {
+  const { session, loading } = useAuth();
   const [isGuestMode, setIsGuestMode] = useState(false);
 
- const handleGuestLogin = () => {
-    setIsAuthenticated(true);
+  const handleGuestLogin = () => {
     setIsGuestMode(true);
   };
- const handleLogin = () => {
-    setIsAuthenticated(true);
-    setIsGuestMode(false); 
+
+  const handleLogin = () => {
+    setIsGuestMode(false);
   };
+
+  if (loading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Loading...</div>;
+  }
+
   return (
-    <Router>
       <Routes>
+        <Route path="/" element={(session || isGuestMode) ? <Navigate to="/home" replace /> : <Navigate to="/login" replace />} />
         <Route 
           path="/login" 
           element={
-            isAuthenticated ? (
+            (session || isGuestMode) ? (
               <Navigate to="/home" replace />
             ) : (
               <LoginPage onLogin={handleLogin} onGuestLogin={handleGuestLogin} />
@@ -36,65 +52,52 @@ export default function App() {
         <Route
           path="/home"
           element={
-            isAuthenticated ? (
-              <HomePage isGuestMode={isGuestMode}/>
-            ) : (
-              <Navigate to="/login" replace />
-            )
+            <ProtectedRoute isGuestMode={isGuestMode}>
+              <HomePage isGuestMode={isGuestMode} />
+            </ProtectedRoute>
           }
         />
         <Route
           path="/chat"
           element={
-            isAuthenticated ? (
+            <ProtectedRoute isGuestMode={isGuestMode}>
               <ChatPage />
-            ) : (
-              <Navigate to="/login" replace />
-            )
+            </ProtectedRoute>
           }
         />
         <Route
           path="/alerts"
           element={
-            isAuthenticated ? (
-              <AlertsPage isGuestMode={isGuestMode}/>
-            ) : (
-              <Navigate to="/login" replace />
-            )
+            <ProtectedRoute isGuestMode={isGuestMode}>
+              <AlertsPage />
+            </ProtectedRoute>
           }
         />
         <Route
           path="/notepad"
           element={
-            isAuthenticated ? (
-              <NotepadPage isGuestMode={isGuestMode}/>
-            ) : (
-              <Navigate to="/login" replace />
-            )
+            <ProtectedRoute isGuestMode={isGuestMode}>
+              <NotepadPage />
+            </ProtectedRoute>
           }
         />
-        <Route
+       <Route
           path="/saved-docs"
           element={
-            isAuthenticated ? (
-              <SavedDocumentsPage isGuestMode={isGuestMode}/>
-            ) : (
-              <Navigate to="/login" replace />
-            )
+            <ProtectedRoute isGuestMode={isGuestMode}>
+              <SavedDocumentsPage />
+            </ProtectedRoute>
           }
         />
         <Route
           path="/appointments"
           element={
-            isAuthenticated ? (
-              <AppointmentSchedulerPage isGuestMode={isGuestMode}/>
-            ) : (
-              <Navigate to="/login" replace />
-            )
+            <ProtectedRoute isGuestMode={isGuestMode}>
+              <AppointmentSchedulerPage />
+            </ProtectedRoute>
           }
         />
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/home" replace />} />
       </Routes>
-    </Router>
   );
 }

@@ -118,7 +118,6 @@ function ChartTooltipContent({
   color,
   nameKey,
   labelKey,
-  ...props
 }: Omit<
   React.ComponentProps<typeof RechartsPrimitive.Tooltip>,
   "label" | "formatter"
@@ -130,8 +129,8 @@ function ChartTooltipContent({
     nameKey?: string;
     labelKey?: string;
     label?: string;
-    labelFormatter?: (value: any, payload: any) => React.ReactNode;
-    formatter?: (value: any, name: any, item: any, index: any, payload: any) => React.ReactNode;
+    labelFormatter?: (value: unknown, payload: unknown[]) => React.ReactNode;
+    formatter?: (value: unknown, name: string, item: unknown, index: number, payload: unknown) => React.ReactNode;
   }) {
   const { config } = useChart();
 

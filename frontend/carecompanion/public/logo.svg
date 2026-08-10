@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 520 160">
+
+    <style>
+        .logo-text {
+            filter: drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.4));
+        }
+        @media (prefers-color-scheme: dark) {
+            .logo-text {
+                filter: drop-shadow(0px 2px 6px rgba(255, 255, 255, 0.4));
+            }
+        }
+    </style>
+
+    <!-- Gradient removed since letters have individual colors -->
+
+    <!-- Removed grey background block in favor of border -->
+
+    <text
+        class="logo-text"
+        x="0"
+        y="50%"
+        dominant-baseline="middle"
+        text-anchor="start"
+        font-family="Poppins, Nunito, Avenir, Arial, sans-serif"
+        font-size="120"
+        font-weight="700"
+        letter-spacing="-4"
+        fill="#3B82F6">
+        Rama
+    </text>
+
+</svg>

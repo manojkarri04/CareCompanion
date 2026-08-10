@@ -1,5 +1,4 @@
 from typing import List, Literal, Optional
-
 from pydantic import BaseModel, Field
 
 ORGANIZATION_INFORMATION_SYSTEM_PROMPT = """
